@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+:root {
+  /* Exact Palette from User Template */
+  --bg-primary: #edeff0;
+  --bg-card: #e5dfd7;
+  --bg-subtle: #e8e5e3;
+  --bg-sage: #eeeec8;
+  
+  --ink-primary: #0d0c13;
+  --ink-secondary: #322f2a;
+  --ink-muted: #5d5450;
+  --ink-faint: #7a7368;
+  
+  --slate-light: #dad9e0;
+  --slate-mid: #8f8ca2;
+  --slate-accent: #6e6a88;
+  --slate-deep: #4d4961;
+  --slate-dark: #2b2938;
+
+  --taupe-light: #c6bcb8;
+  --taupe-mid: #a5968f;
+  --taupe-deep: #827570;
+
+  --sage-light: #c7c7a7;
+  --sage-mid: #a0a086;
+  --sage-deep: #5c5c4c;
+
+  --warm-tan: #c3b8a8;
+  --warm-tan-dark: #9c9386;
+
+  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-grotesk: 'Space Grotesk', -apple-system, sans-serif;
+  --font-mono: 'Space Mono', monospace;
+}
+
+@layer base {
+  * {
+    font-family: var(--font-sans);
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    background-color: var(--bg-primary);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--bg-primary);
+    color: var(--ink-primary);
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--ink-primary);
+    margin: 0;
+    letter-spacing: -0.03em;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+::selection {
+  background: #0d0c13;
+  color: #edeff0;
+}
+
+/* Custom Minimalist Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-subtle);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--warm-tan);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-muted);
+}
