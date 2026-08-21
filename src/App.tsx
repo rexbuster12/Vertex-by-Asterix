@@ -7,6 +7,7 @@ import Students from "./pages/Students"
 import Profile from "./pages/Profile"
 import ProfileCreatePage from "./pages/ProfileCreatePage"
 import CreateCommunityPage from "./pages/CreateCommunityPage"
+import CommunityDetail from "./pages/CommunityDetail"
 import IntroAnimation from "./components/IntroAnimation"
 
 function App() {
@@ -21,10 +22,12 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/communities" element={<Communities />} />
+            <Route path="/communities/:communityName" element={<CommunityDetail />} />
             <Route path="/students" element={<Students />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/create" element={<ProfileCreatePage />} />
             <Route path="/create-community" element={<CreateCommunityPage />} />
+            <Route path="/profile/setup" element={<ProfileCreatePage />} />
           </Routes>
         </main>
 

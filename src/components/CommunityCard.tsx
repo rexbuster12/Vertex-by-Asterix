@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router"
 
 export type CommunityCardProps = {
   id?: string | number
@@ -86,7 +87,9 @@ function CommunityCard({
           <span>{memberCount === 1 ? "1 member" : `${memberCount} members`}</span>
         </div>
 
-        <h3 className="community-card__title">{name}</h3>
+        <h3 className="community-card__title">
+          <Link to={`/communities/${encodeURIComponent(name)}`}>{name}</Link>
+        </h3>
         <p className="community-card__description">{description}</p>
 
         {normalizedTags.length > 0 && (
@@ -100,6 +103,12 @@ function CommunityCard({
         )}
 
         <div className="community-card__actions">
+          <Link
+            to={`/communities/${encodeURIComponent(name)}`}
+            className="community-card__cta"
+          >
+            View circle
+          </Link>
           <button
             type="button"
             onClick={handleToggleJoin}

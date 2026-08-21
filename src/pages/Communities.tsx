@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react"
-import { Link } from "react-router"
+import { Link, useSearchParams } from "react-router"
 import { supabase } from "../lib/supabase"
 import CommunityCard, { type CommunityCardProps } from "../components/CommunityCard"
 
@@ -56,10 +56,11 @@ const FALLBACK_COMMUNITIES: CommunityCardProps[] = [
 ]
 
 function Communities() {
+  const [searchParams] = useSearchParams()
   const [communities, setCommunities] = useState<CommunityCardProps[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "")
   const [selectedTag, setSelectedTag] = useState("All")
 
   async function fetchCommunities() {
@@ -76,7 +77,7 @@ function Communities() {
       } else {
         setCommunities(data)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error loading communities:", err)
       setCommunities(FALLBACK_COMMUNITIES)
     } finally {
