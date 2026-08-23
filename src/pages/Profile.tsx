@@ -12,6 +12,7 @@ import {
   sendConnectionRequest,
   acceptConnectionRequest,
   declineConnectionRequest,
+  cancelConnectionRequest,
   disconnectUsers,
   getConnectedStudentNames,
 } from "../lib/tempStore"
@@ -181,6 +182,12 @@ function Profile() {
 
   const handleDeclineRequest = (requestId: string) => {
     declineConnectionRequest(requestId)
+    setConnectionVersion((v) => v + 1)
+  }
+
+  const handleCancelRequest = () => {
+    if (!profile || !active?.display_name) return
+    cancelConnectionRequest(active.display_name, profile.display_name)
     setConnectionVersion((v) => v + 1)
   }
 
@@ -377,11 +384,13 @@ function Profile() {
                   </div>
                 ) : connInfo.status === "request_sent" ? (
                   <button
-                    disabled
-                    className="text-xs font-mono font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm border-2 border-[#141c2b] bg-[#eae2d5] text-[#545e6d] shadow-[2px_2px_0px_#141c2b] cursor-default flex items-center justify-center gap-1.5"
+                    onClick={handleCancelRequest}
+                    className="group text-xs font-mono font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm border-2 border-[#141c2b] bg-[#eae2d5] text-[#545e6d] hover:bg-[#fbe8e6] hover:text-[#d84c23] hover:border-[#d84c23] shadow-[2px_2px_0px_#141c2b] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Click to cancel connection request"
                   >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Requested ⏳</span>
+                    <Clock className="w-3.5 h-3.5 group-hover:hidden" />
+                    <span className="group-hover:hidden">Requested ⏳</span>
+                    <span className="hidden group-hover:inline font-black">Cancel Request ✕</span>
                   </button>
                 ) : (
                   <button

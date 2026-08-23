@@ -509,6 +509,8 @@ async function formatCommunityPayload(comm: any) {
     batch: "Student",
     email: undefined as string | undefined,
     avatar_url: undefined as string | undefined,
+    instagram_url: undefined as string | undefined,
+    linkedin_url: undefined as string | undefined,
   }
 
   // 1. If created_by is a valid UUID, fetch creator's actual profile from Supabase
@@ -526,6 +528,8 @@ async function formatCommunityPayload(comm: any) {
           batch: creator.batch || "Student",
           email: creator.email,
           avatar_url: creator.avatar_url,
+          instagram_url: creator.instagram_url,
+          linkedin_url: creator.linkedin_url,
         }
       }
     } catch (e) {
@@ -554,6 +558,8 @@ async function formatCommunityPayload(comm: any) {
             batch: creator.batch || "Student",
             email: creator.email,
             avatar_url: creator.avatar_url,
+            instagram_url: creator.instagram_url,
+            linkedin_url: creator.linkedin_url,
           }
         }
       }
@@ -594,6 +600,8 @@ async function formatCommunityPayload(comm: any) {
           branch: p?.branch || (isHeadRole ? creatorInfo.branch : "BML Munjal University"),
           batch: p?.batch || (isHeadRole ? creatorInfo.batch : "Student"),
           avatar_url: p?.avatar_url || (isHeadRole ? creatorInfo.avatar_url : undefined),
+          instagram_url: p?.instagram_url || undefined,
+          linkedin_url: p?.linkedin_url || undefined,
           is_founder: isHeadRole,
           is_head: isHeadRole,
           role: isHeadRole ? "head" : m.role || "member",
@@ -613,6 +621,8 @@ async function formatCommunityPayload(comm: any) {
       branch: creatorInfo.branch,
       batch: creatorInfo.batch,
       avatar_url: creatorInfo.avatar_url,
+      instagram_url: creatorInfo.instagram_url,
+      linkedin_url: creatorInfo.linkedin_url,
       is_founder: true,
       is_head: true,
       role: "head" as const,

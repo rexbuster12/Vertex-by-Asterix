@@ -34,6 +34,7 @@ import {
   deleteCommunityAnnouncement,
   setMemberRole,
   removeCommunityMember,
+  addCommunityMember,
   transferCommunityFounder,
   toggleAnnouncementReaction,
   type MockCommunity,
@@ -162,6 +163,17 @@ function CommunityDetail() {
       if (joined) {
         setJoined(false)
         setMemberCount((prev) => Math.max(1, prev - 1))
+        setCommunity((prev) => {
+          if (!prev) return prev
+          const withoutSelf = (prev.members || []).filter(
+            (m) => m.name.trim().toLowerCase() !== activeProfile?.display_name?.trim().toLowerCase()
+          )
+          return {
+            ...prev,
+            members: withoutSelf,
+            members_count: Math.max(1, withoutSelf.length),
+          }
+        })
         if (activeProfile?.display_name) {
           removeCommunityMember(community.name, activeProfile.display_name)
         }
@@ -169,6 +181,42 @@ function CommunityDetail() {
       } else {
         setJoined(true)
         setMemberCount((prev) => prev + 1)
+        const newMember: CommunityMember = {
+          id: activeUser?.id || activeProfile?.display_name || `mem-${Date.now()}`,
+          name: activeProfile?.display_name || activeUser?.name || "Student Member",
+          branch: activeProfile?.branch || "BML Munjal University",
+          batch: activeProfile?.batch || "Student",
+          avatar_url: activeProfile?.avatar_url,
+          instagram_url: activeProfile?.instagram_url,
+          linkedin_url: activeProfile?.linkedin_url,
+          is_founder: false,
+          is_head: false,
+          role: "member",
+        }
+        setCommunity((prev) => {
+          if (!prev) return prev
+          const existing = prev.members || []
+          const withoutSelf = existing.filter(
+            (m) => m.name.trim().toLowerCase() !== newMember.name.trim().toLowerCase()
+          )
+          const updated = [...withoutSelf, newMember]
+          return {
+            ...prev,
+            members: updated,
+            members_count: Math.max(prev.members_count || 1, updated.length),
+          }
+        })
+        if (activeProfile?.display_name) {
+          addCommunityMember(community.name, {
+            id: activeProfile.display_name,
+            name: activeProfile.display_name,
+            branch: activeProfile.branch,
+            batch: activeProfile.batch,
+            avatar_url: activeProfile.avatar_url,
+            instagram_url: activeProfile.instagram_url,
+            linkedin_url: activeProfile.linkedin_url,
+          })
+        }
         addNotification({
           type: "member_joined",
           title: `Joined ${community.name}`,
@@ -361,8 +409,8 @@ function CommunityDetail() {
       batch: member.batch,
       bio: `Student member in ${community?.name || "campus communities"}.`,
       avatar_url: member.avatar_url || "",
-      instagram_url: `https://instagram.com/${member.name.toLowerCase().replace(/\s+/g, "_")}`,
-      linkedin_url: `https://linkedin.com/in/${member.name.toLowerCase().replace(/\s+/g, "-")}`,
+      instagram_url: member.instagram_url || "",
+      linkedin_url: member.linkedin_url || "",
     }
     localStorage.setItem("vertex_preview_profile", JSON.stringify(previewData))
     navigate(`/profile?preview=${encodeURIComponent(member.name)}`)

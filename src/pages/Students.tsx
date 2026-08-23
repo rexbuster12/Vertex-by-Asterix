@@ -9,6 +9,7 @@ import {
   sendConnectionRequest,
   acceptConnectionRequest,
   declineConnectionRequest,
+  cancelConnectionRequest,
   getConnectionStatus,
   getIncomingConnectionRequests,
   areUsersConnected,
@@ -37,6 +38,8 @@ export type StudentProfile = {
   minor_club?: string
   minor_sport?: string
   community_club?: string
+  instagram_url?: string
+  linkedin_url?: string
 }
 
 const BRANCH_FILTER_OPTIONS = [
@@ -109,6 +112,8 @@ function Students() {
             minor_club: p.minor_club,
             minor_sport: p.minor_sport,
             community_club: p.community_club,
+            instagram_url: p.instagram_url || "",
+            linkedin_url: p.linkedin_url || "",
           }))
           setRemoteProfiles(mapped)
         }
@@ -139,6 +144,8 @@ function Students() {
           minor_club: active.minor_club,
           minor_sport: active.minor_sport,
           community_club: active.community_club,
+          instagram_url: active.instagram_url || "",
+          linkedin_url: active.linkedin_url || "",
         })
       }
     }
@@ -158,8 +165,8 @@ function Students() {
       minor_club: student.minor_club,
       minor_sport: student.minor_sport,
       community_club: student.community_club,
-      instagram_url: student.username ? `https://instagram.com/${student.username}` : "",
-      linkedin_url: student.username ? `https://linkedin.com/in/${student.username}` : "",
+      instagram_url: student.instagram_url || "",
+      linkedin_url: student.linkedin_url || "",
     }
     localStorage.setItem("vertex_preview_profile", JSON.stringify(previewData))
     navigate(`/profile?preview=${encodeURIComponent(student.username || student.name)}`)
@@ -180,6 +187,12 @@ function Students() {
       linkUrl: `/students`,
       sourceName: student.name,
     })
+  }
+
+  const handleCancelConnectRequest = (studentName: string) => {
+    if (!active?.display_name) return
+    cancelConnectionRequest(active.display_name, studentName)
+    setConnectionVersion((v) => v + 1)
   }
 
   const handleAcceptRequest = (requestId: string, fromName: string) => {
@@ -662,12 +675,13 @@ function Students() {
                           ) : connInfo.status === "request_sent" ? (
                             <button
                               type="button"
-                              disabled
-                              className="font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] bg-[#eae2d5] text-[#545e6d] shadow-[1px_1px_0px_#141c2b] cursor-default flex items-center gap-1"
-                              title="Request pending approval"
+                              onClick={() => handleCancelConnectRequest(student.name)}
+                              className="group font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] bg-[#eae2d5] text-[#545e6d] hover:bg-[#fbe8e6] hover:text-[#d84c23] hover:border-[#d84c23] shadow-[1px_1px_0px_#141c2b] transition-all cursor-pointer flex items-center gap-1"
+                              title="Click to cancel / un-request connection"
                             >
-                              <Clock className="w-3 h-3" />
-                              <span>Requested ⏳</span>
+                              <Clock className="w-3 h-3 group-hover:hidden" />
+                              <span className="group-hover:hidden">Requested ⏳</span>
+                              <span className="hidden group-hover:inline font-black">Cancel ✕</span>
                             </button>
                           ) : (
                             <button

@@ -7,6 +7,8 @@ export interface CommunityMember {
   branch: string
   batch: string
   avatar_url?: string
+  instagram_url?: string
+  linkedin_url?: string
   is_founder?: boolean
   is_head?: boolean
   role?: "founder" | "head" | "co-leader" | "member"
@@ -474,6 +476,36 @@ export function transferCommunityFounder(
   if (updatedCommunity) {
     saveStoredCommunities(updatedList)
     console.log(`👑 [COMMUNITY FOUNDERSHIP TRANSFERRED IN ${communityNameOrId}]: New Founder -> ${newFounderId}`)
+  }
+  return updatedCommunity
+}
+
+export function addCommunityMember(
+  communityNameOrId: string,
+  member: CommunityMember
+): MockCommunity | null {
+  const all = getStoredCommunities()
+  const clean = decodeURIComponent(communityNameOrId).trim().toLowerCase()
+  let updatedCommunity: MockCommunity | null = null
+
+  const updatedList = all.map((c) => {
+    if (c.id === communityNameOrId || c.name.trim().toLowerCase() === clean) {
+      const existing = (c.members || []).filter(
+        (m) => m.name.trim().toLowerCase() !== member.name.trim().toLowerCase()
+      )
+      const updatedMembers = [...existing, member]
+      updatedCommunity = {
+        ...c,
+        members: updatedMembers,
+        members_count: Math.max(c.members_count || 1, updatedMembers.length),
+      }
+      return updatedCommunity
+    }
+    return c
+  })
+
+  if (updatedCommunity) {
+    saveStoredCommunities(updatedList)
   }
   return updatedCommunity
 }

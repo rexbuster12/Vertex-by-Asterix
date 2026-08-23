@@ -287,6 +287,31 @@ export function declineConnectionRequest(requestId: string): boolean {
   return true
 }
 
+export function cancelConnectionRequest(fromName: string, toName: string): boolean {
+  if (!fromName || !toName) return false
+  const keyFrom = fromName.trim().toLowerCase()
+  const keyTo = toName.trim().toLowerCase()
+  const all = loadAllConnectionRequests()
+  const filtered = all.filter(
+    (r) =>
+      !(
+        r.fromName.trim().toLowerCase() === keyFrom &&
+        r.toName.trim().toLowerCase() === keyTo &&
+        r.status === "pending"
+      )
+  )
+  saveAllConnectionRequests(filtered)
+  return true
+}
+
+export function cancelConnectionRequestById(requestId: string): boolean {
+  if (!requestId) return false
+  const all = loadAllConnectionRequests()
+  const filtered = all.filter((r) => r.id !== requestId)
+  saveAllConnectionRequests(filtered)
+  return true
+}
+
 export function disconnectUsers(userA: string, userB: string) {
   if (!userA || !userB) return
   const keyA = userA.trim().toLowerCase()
