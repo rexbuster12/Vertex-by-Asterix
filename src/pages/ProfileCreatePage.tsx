@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { useNavigate } from "react-router"
 import { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile } from "../lib/tempStore"
+import { saveStudentProfile } from "../lib/supabaseService"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS, REGULAR_CLUBS } from "../lib/clubsData"
 
 const START_YEARS = [2022, 2023, 2024, 2025, 2026]
@@ -122,7 +123,6 @@ function ProfileSetup() {
 
     const batchStr = course === "Ph. D." ? "Ph.D. Scholar" : `${startYear}\u2013${endYear}` // en-dash
 
-    // Save strictly to temporary console in-memory store (disconnected DB, resets on refresh)
     const localProfile: ProfileData = {
       display_name: displayName.trim(),
       bio: bio.trim(),
@@ -138,13 +138,17 @@ function ProfileSetup() {
       community_club: communityClub || undefined,
     }
 
-    setActiveProfile(localProfile)
-    console.log("🚀 [PROFILE CREATED - SAVED TO TEMPORARY CONSOLE (RESETS ON REFRESH)]:", localProfile)
+    try {
+      await saveStudentProfile(localProfile)
+    } catch (err) {
+      console.warn("Supabase profile save notice:", err)
+      setActiveProfile(localProfile)
+    }
 
     setTimeout(() => {
       setLoading(false)
       navigate("/profile")
-    }, 400)
+    }, 350)
   }
 
   return (

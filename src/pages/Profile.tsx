@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { Link, useSearchParams } from "react-router"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile } from "../lib/tempStore"
+import { saveStudentProfile } from "../lib/supabaseService"
 
 function Profile() {
   const [searchParams] = useSearchParams()
@@ -26,14 +27,13 @@ function Profile() {
         }
       }
 
-      // Read from temporary in-memory store (resets on refresh)
+      // Read active profile
       const active = getActiveProfile()
       if (active) {
         setProfile(active)
         setIsPreviewing(false)
         setInterests([])
       } else {
-        // No saved profile on fresh load/refresh
         setProfile(null)
         setIsPreviewing(false)
         setInterests([])
@@ -43,10 +43,14 @@ function Profile() {
     }
   }, [previewParam])
 
-  function handleSave(data: ProfileData) {
+  async function handleSave(data: ProfileData) {
     setProfile(data)
     setActiveProfile(data)
-    console.log("🚀 [PROFILE UPDATED - SAVED TO TEMPORARY CONSOLE (RESETS ON REFRESH)]:", data)
+    try {
+      await saveStudentProfile(data)
+    } catch (err) {
+      console.warn("Supabase profile update notice:", err)
+    }
     setIsEditOpen(false)
   }
 

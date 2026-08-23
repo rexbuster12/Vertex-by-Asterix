@@ -18,10 +18,39 @@ export interface ActiveUser {
   email: string
   name: string
   username: string
+  id?: string
 }
 
-let inMemoryProfile: ActiveProfile | null = null
-let inMemoryUser: ActiveUser | null = null
+function loadInitialProfile(): ActiveProfile | null {
+  try {
+    const raw = localStorage.getItem("vertex_auth_profile")
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function loadInitialUser(): ActiveUser | null {
+  try {
+    const raw = localStorage.getItem("vertex_auth_user")
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function loadInitialBlocked(): Set<string> {
+  try {
+    const raw = localStorage.getItem("vertex_blocked_users")
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+let inMemoryProfile: ActiveProfile | null = loadInitialProfile()
+let inMemoryUser: ActiveUser | null = loadInitialUser()
+let inMemoryBlockedUsers: Set<string> = loadInitialBlocked()
 
 export function extractUsername(emailOrPrefix: string): string {
   if (!emailOrPrefix) return ""
@@ -29,6 +58,7 @@ export function extractUsername(emailOrPrefix: string): string {
 }
 
 export function getActiveProfile(): ActiveProfile | null {
+  if (!inMemoryProfile) inMemoryProfile = loadInitialProfile()
   return inMemoryProfile
 }
 
@@ -37,10 +67,15 @@ export function setActiveProfile(profile: ActiveProfile | null) {
     profile.username = inMemoryUser.username
   }
   inMemoryProfile = profile
-  console.log("🚀 [TEMPORARY CONSOLE PROFILE SAVED - RESETS ON REFRESH]:", profile)
+  if (profile) {
+    localStorage.setItem("vertex_auth_profile", JSON.stringify(profile))
+  } else {
+    localStorage.removeItem("vertex_auth_profile")
+  }
 }
 
 export function getActiveUser(): ActiveUser | null {
+  if (!inMemoryUser) inMemoryUser = loadInitialUser()
   return inMemoryUser
 }
 
@@ -49,11 +84,12 @@ export function setActiveUser(user: ActiveUser | null) {
     user.username = extractUsername(user.email)
   }
   inMemoryUser = user
-  console.log("🚀 [TEMPORARY CONSOLE AUTH USER (USERNAME: @" + user?.username + ") - RESETS ON REFRESH]:", user)
+  if (user) {
+    localStorage.setItem("vertex_auth_user", JSON.stringify(user))
+  } else {
+    localStorage.removeItem("vertex_auth_user")
+  }
 }
-
-// Blocked Users in temporary console memory
-let inMemoryBlockedUsers: Set<string> = new Set()
 
 export function getBlockedUsers(): string[] {
   return Array.from(inMemoryBlockedUsers)
@@ -62,13 +98,13 @@ export function getBlockedUsers(): string[] {
 export function blockUser(identifier: string) {
   if (!identifier) return
   inMemoryBlockedUsers.add(identifier.trim().toLowerCase())
-  console.log("⛔ [USER BLOCKED]:", identifier)
+  localStorage.setItem("vertex_blocked_users", JSON.stringify(Array.from(inMemoryBlockedUsers)))
 }
 
 export function unblockUser(identifier: string) {
   if (!identifier) return
   inMemoryBlockedUsers.delete(identifier.trim().toLowerCase())
-  console.log("🔓 [USER UNBLOCKED]:", identifier)
+  localStorage.setItem("vertex_blocked_users", JSON.stringify(Array.from(inMemoryBlockedUsers)))
 }
 
 export function isUserBlocked(identifier: string): boolean {
