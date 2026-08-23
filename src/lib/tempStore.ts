@@ -177,27 +177,40 @@ export type UserConnectionStatus = "connected" | "request_sent" | "request_recei
 
 export function getConnectionStatus(
   currentUserName: string,
-  targetStudentName: string
-): { status: UserConnectionStatus; requestId?: string } {
-  if (!currentUserName || !targetStudentName) return { status: "none" }
-  if (currentUserName.trim().toLowerCase() === targetStudentName.trim().toLowerCase()) {
-    return { status: "none" }
+  targetStudentName: string,
+  currentUsername?: string,
+  targetUsername?: string
+): { status: "connected" | "request_sent" | "request_received" | "none"; requestId?: string } {
+  if (!currentUserName && !currentUsername) return { status: "none" }
+  if (!targetStudentName && !targetUsername) return { status: "none" }
+
+  const keyCurrent = currentUserName ? currentUserName.trim().toLowerCase() : ""
+  const keyCurrentUser = currentUsername ? currentUsername.trim().toLowerCase() : ""
+  const keyTarget = targetStudentName ? targetStudentName.trim().toLowerCase() : ""
+  const keyTargetUser = targetUsername ? targetUsername.trim().toLowerCase() : ""
+
+  const matchesCurrent = (val?: string) => {
+    if (!val) return false
+    const v = val.trim().toLowerCase()
+    return (keyCurrent && v === keyCurrent) || (keyCurrentUser && v === keyCurrentUser)
+  }
+  const matchesTarget = (val?: string) => {
+    if (!val) return false
+    const v = val.trim().toLowerCase()
+    return (keyTarget && v === keyTarget) || (keyTargetUser && v === keyTargetUser)
   }
 
-  if (areUsersConnected(currentUserName, targetStudentName)) {
+  // Check two-way connection
+  const connMap = loadAllTwoWayConnections()
+  const connectedList = (connMap[keyCurrent] || []).concat(connMap[keyCurrentUser] || [])
+  if (connectedList.some((n) => matchesTarget(n))) {
     return { status: "connected" }
   }
 
-  const keyCurrent = currentUserName.trim().toLowerCase()
-  const keyTarget = targetStudentName.trim().toLowerCase()
   const allRequests = loadAllConnectionRequests()
-
   // 1. Check if target student sent request to current user
   const incoming = allRequests.find(
-    (r) =>
-      r.status === "pending" &&
-      r.fromName.trim().toLowerCase() === keyTarget &&
-      r.toName.trim().toLowerCase() === keyCurrent
+    (r) => r.status === "pending" && matchesTarget(r.fromName) && matchesCurrent(r.toName)
   )
   if (incoming) {
     return { status: "request_received", requestId: incoming.id }
@@ -205,10 +218,7 @@ export function getConnectionStatus(
 
   // 2. Check if current user sent request to target student
   const outgoing = allRequests.find(
-    (r) =>
-      r.status === "pending" &&
-      r.fromName.trim().toLowerCase() === keyCurrent &&
-      r.toName.trim().toLowerCase() === keyTarget
+    (r) => r.status === "pending" && matchesCurrent(r.fromName) && matchesTarget(r.toName)
   )
   if (outgoing) {
     return { status: "request_sent", requestId: outgoing.id }
@@ -217,13 +227,16 @@ export function getConnectionStatus(
   return { status: "none" }
 }
 
-export function getIncomingConnectionRequests(currentUserName: string): ConnectionRequest[] {
-  if (!currentUserName) return []
-  const keyCurrent = currentUserName.trim().toLowerCase()
+export function getIncomingConnectionRequests(currentUserName: string, currentUsername?: string): ConnectionRequest[] {
+  if (!currentUserName && !currentUsername) return []
+  const keyCurrent = currentUserName ? currentUserName.trim().toLowerCase() : ""
+  const keyCurrentUser = currentUsername ? currentUsername.trim().toLowerCase() : ""
   const allRequests = loadAllConnectionRequests()
-  return allRequests.filter(
-    (r) => r.status === "pending" && r.toName.trim().toLowerCase() === keyCurrent
-  )
+  return allRequests.filter((r) => {
+    if (r.status !== "pending") return false
+    const to = r.toName.trim().toLowerCase()
+    return (keyCurrent && to === keyCurrent) || (keyCurrentUser && to === keyCurrentUser)
+  })
 }
 
 export function getConnectedStudentNames(currentUserName: string): string[] {

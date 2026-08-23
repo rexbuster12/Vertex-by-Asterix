@@ -1225,19 +1225,34 @@ export async function sendConnectionRequestInDb(
     console.error("❌ [EXCEPTION SENDING CONNECTION REQUEST]:", err)
   }
 
-  // 3. Insert notification for recipient
+  // 3. Insert notification for recipient with graceful column fallback
   try {
-    const { error: notifErr } = await supabase.from("notifications").insert({
+    const notifPayload: any = {
       user_name: cleanTo,
       type: "connection_received",
       title: "New Connection Request",
       message: `${cleanFrom} sent you a connection request on Vertex!`,
       link_url: "/students",
       source_name: cleanFrom,
-      source_avatar: fromInfo?.avatar || "",
-    })
+    }
+    if (fromInfo?.avatar) {
+      notifPayload.source_avatar = fromInfo.avatar
+    }
+
+    const { error: notifErr } = await supabase.from("notifications").insert(notifPayload)
     if (notifErr) {
-      console.error("❌ [SUPABASE INSERT NOTIFICATION ERROR]:", notifErr.message)
+      // If error was caused by missing source_avatar column, retry without it
+      if (notifErr.message?.includes("source_avatar") || notifErr.code === "42703") {
+        delete notifPayload.source_avatar
+        const { error: retryErr } = await supabase.from("notifications").insert(notifPayload)
+        if (retryErr) {
+          console.error("❌ [SUPABASE NOTIFICATION RETRY ERROR]:", retryErr.message)
+        } else {
+          console.log("✅ [SUPABASE NOTIFICATION INSERTED (fallback)]: for", cleanTo)
+        }
+      } else {
+        console.error("❌ [SUPABASE INSERT NOTIFICATION ERROR]:", notifErr.message)
+      }
     } else {
       console.log("✅ [SUPABASE NOTIFICATION SAVED FOR]:", cleanTo)
     }

@@ -16,9 +16,12 @@ import {
   markAllAsRead,
   clearNotifications,
   subscribeToNotifications,
+  mergeRemoteNotifications,
   type VertexNotification,
   type NotificationType,
 } from "../lib/notificationStore"
+import { syncNotificationsFromDb } from "../lib/supabaseService"
+import { getActiveProfile, getActiveUser } from "../lib/tempStore"
 
 function Notifications() {
   const [notifications, setNotifications] = useState<VertexNotification[]>([])
@@ -29,7 +32,29 @@ function Notifications() {
     const unsubscribe = subscribeToNotifications(() => {
       setNotifications(getNotifications())
     })
-    return () => unsubscribe()
+
+    async function syncRemoteNotifs() {
+      const active = getActiveProfile()
+      const user = getActiveUser()
+      const targetName = active?.display_name || user?.name || ""
+      const targetUser = active?.username || user?.username || ""
+      if (targetName || targetUser) {
+        try {
+          const remoteNotifs = await syncNotificationsFromDb(targetName, targetUser)
+          if (remoteNotifs && remoteNotifs.length > 0) {
+            mergeRemoteNotifications(remoteNotifs)
+          }
+        } catch { }
+      }
+    }
+
+    syncRemoteNotifs()
+    const interval = setInterval(syncRemoteNotifs, 3000)
+
+    return () => {
+      unsubscribe()
+      clearInterval(interval)
+    }
   }, [])
 
   const filtered = notifications.filter((n) => {
