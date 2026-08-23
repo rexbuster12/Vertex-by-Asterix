@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react"
 import { Link, useNavigate } from "react-router"
 import {
   getActiveProfile,
+  getActiveUser,
   blockUser,
   unblockUser,
   isUserBlocked,
@@ -93,23 +94,26 @@ function Students() {
   const [remoteProfiles, setRemoteProfiles] = useState<StudentProfile[]>([])
 
   const active = getActiveProfile()
+  const user = getActiveUser()
+  const activeName = active?.display_name || user?.name || ""
+  const activeUsername = active?.username || user?.username || ""
 
   useEffect(() => {
     async function syncRemote() {
-      if (active?.display_name) {
+      if (activeName || activeUsername) {
         try {
-          const remoteReqs = await syncConnectionRequestsFromDb(active.display_name)
+          const remoteReqs = await syncConnectionRequestsFromDb(activeName, activeUsername)
           if (remoteReqs && remoteReqs.length > 0) {
             mergeRemoteConnectionRequests(remoteReqs)
           }
         } catch { }
-        setIncomingRequests(getIncomingConnectionRequests(active.display_name))
+        setIncomingRequests(getIncomingConnectionRequests(activeName))
       }
     }
     syncRemote()
-    const interval = setInterval(syncRemote, 4000)
+    const interval = setInterval(syncRemote, 3000)
     return () => clearInterval(interval)
-  }, [active?.display_name, connectionVersion])
+  }, [activeName, activeUsername, connectionVersion])
 
   useEffect(() => {
     async function loadStudents() {

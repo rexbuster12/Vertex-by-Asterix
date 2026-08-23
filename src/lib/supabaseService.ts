@@ -1142,27 +1142,44 @@ export async function submitReportToDb(
 
 // ── CROSS-CLIENT CONNECTION REQUESTS & NOTIFICATIONS ─────────────
 
-export async function syncConnectionRequestsFromDb(activeName: string): Promise<any[]> {
-  if (!activeName) return []
+export async function syncConnectionRequestsFromDb(
+  activeName: string,
+  activeUsername?: string
+): Promise<any[]> {
+  if (!activeName && !activeUsername) return []
   try {
-    const clean = activeName.trim()
-    const { data } = await supabase
-      .from("connection_requests")
-      .select("*")
-      .or(`from_name.ilike.${clean},to_name.ilike.${clean}`)
+    const cleanName = activeName ? activeName.trim() : ""
+    const cleanUser = activeUsername ? activeUsername.trim() : ""
 
-    if (data && Array.isArray(data)) {
-      return data.map((d: any) => ({
-        id: d.id,
-        fromName: d.from_name,
-        fromBranch: d.from_branch,
-        fromBatch: d.from_batch,
-        fromAvatar: d.from_avatar,
-        toName: d.to_name,
-        status: d.status || "pending",
-        createdAt: d.created_at,
-      }))
+    const promises: Promise<any>[] = []
+    if (cleanName) {
+      promises.push(Promise.resolve(supabase.from("connection_requests").select("*").ilike("from_name", cleanName)))
+      promises.push(Promise.resolve(supabase.from("connection_requests").select("*").ilike("to_name", cleanName)))
     }
+    if (cleanUser && cleanUser.toLowerCase() !== cleanName.toLowerCase()) {
+      promises.push(Promise.resolve(supabase.from("connection_requests").select("*").ilike("from_name", cleanUser)))
+      promises.push(Promise.resolve(supabase.from("connection_requests").select("*").ilike("to_name", cleanUser)))
+    }
+
+    const results = await Promise.all(promises)
+    const rows = results.flatMap((r) => r.data || [])
+    const seen = new Set<string>()
+    const uniqueRows = rows.filter((r) => {
+      if (!r || !r.id || seen.has(r.id)) return false
+      seen.add(r.id)
+      return true
+    })
+
+    return uniqueRows.map((d: any) => ({
+      id: d.id,
+      fromName: d.from_name,
+      fromBranch: d.from_branch,
+      fromBatch: d.from_batch,
+      fromAvatar: d.from_avatar,
+      toName: d.to_name,
+      status: d.status || "pending",
+      createdAt: d.created_at,
+    }))
   } catch (err) {
     console.warn("Could not sync connection requests from Supabase:", err)
   }
@@ -1175,32 +1192,57 @@ export async function sendConnectionRequestInDb(
   fromInfo?: { branch?: string; batch?: string; avatar?: string }
 ) {
   if (!fromName || !toName) return
-  try {
-    // 1. Insert connection request
-    await supabase.from("connection_requests").upsert(
-      {
-        from_name: fromName.trim(),
-        to_name: toName.trim(),
-        from_branch: fromInfo?.branch,
-        from_batch: fromInfo?.batch,
-        from_avatar: fromInfo?.avatar,
-        status: "pending",
-      },
-      { onConflict: "from_name,to_name" }
-    )
+  const cleanFrom = fromName.trim()
+  const cleanTo = toName.trim()
 
-    // 2. Insert notification targeted at recipient (toName)
-    await supabase.from("notifications").insert({
-      user_name: toName.trim(),
-      type: "connection_received",
-      title: `New Connection Request`,
-      message: `${fromName} sent you a connection request on Vertex!`,
-      link_url: "/students",
-      source_name: fromName.trim(),
-      source_avatar: fromInfo?.avatar,
+  // 1. Delete any old/pending request between these two
+  try {
+    await supabase
+      .from("connection_requests")
+      .delete()
+      .ilike("from_name", cleanFrom)
+      .ilike("to_name", cleanTo)
+  } catch (delErr) {
+    console.warn("Delete old request notice:", delErr)
+  }
+
+  // 2. Direct insert (no fragile onConflict constraint)
+  try {
+    const { error: insertErr } = await supabase.from("connection_requests").insert({
+      from_name: cleanFrom,
+      to_name: cleanTo,
+      from_branch: fromInfo?.branch || "",
+      from_batch: fromInfo?.batch || "",
+      from_avatar: fromInfo?.avatar || "",
+      status: "pending",
     })
+    if (insertErr) {
+      console.error("❌ [SUPABASE INSERT CONNECTION REQUEST ERROR]:", insertErr.message)
+    } else {
+      console.log("✅ [SUPABASE CONNECTION REQUEST SAVED]:", `${cleanFrom} -> ${cleanTo}`)
+    }
   } catch (err) {
-    console.warn("Could not write connection request to Supabase:", err)
+    console.error("❌ [EXCEPTION SENDING CONNECTION REQUEST]:", err)
+  }
+
+  // 3. Insert notification for recipient
+  try {
+    const { error: notifErr } = await supabase.from("notifications").insert({
+      user_name: cleanTo,
+      type: "connection_received",
+      title: "New Connection Request",
+      message: `${cleanFrom} sent you a connection request on Vertex!`,
+      link_url: "/students",
+      source_name: cleanFrom,
+      source_avatar: fromInfo?.avatar || "",
+    })
+    if (notifErr) {
+      console.error("❌ [SUPABASE INSERT NOTIFICATION ERROR]:", notifErr.message)
+    } else {
+      console.log("✅ [SUPABASE NOTIFICATION SAVED FOR]:", cleanTo)
+    }
+  } catch (err) {
+    console.error("❌ [EXCEPTION SENDING NOTIFICATION]:", err)
   }
 }
 
@@ -1210,6 +1252,8 @@ export async function acceptConnectionRequestInDb(
   toName: string
 ) {
   try {
+    const cleanFrom = fromName.trim()
+    const cleanTo = toName.trim()
     if (isUUID(requestId)) {
       await supabase
         .from("connection_requests")
@@ -1219,19 +1263,20 @@ export async function acceptConnectionRequestInDb(
       await supabase
         .from("connection_requests")
         .update({ status: "accepted" })
-        .ilike("from_name", fromName)
-        .ilike("to_name", toName)
+        .ilike("from_name", cleanFrom)
+        .ilike("to_name", cleanTo)
     }
 
-    // Insert acceptance notification for the requester (fromName)
+    // Insert acceptance notification for the requester
     await supabase.from("notifications").insert({
-      user_name: fromName.trim(),
+      user_name: cleanFrom,
       type: "connection_received",
-      title: `Connected with ${toName}`,
-      message: `${toName} accepted your connection request!`,
+      title: `Connected with ${cleanTo}`,
+      message: `${cleanTo} accepted your connection request!`,
       link_url: "/students",
-      source_name: toName.trim(),
+      source_name: cleanTo,
     })
+    console.log("✅ [CONNECTION ACCEPTED IN SUPABASE]:", `${cleanFrom} <-> ${cleanTo}`)
   } catch (err) {
     console.warn("Could not accept connection request in DB:", err)
   }
@@ -1245,12 +1290,13 @@ export async function declineConnectionRequestInDb(
   try {
     if (isUUID(requestId)) {
       await supabase.from("connection_requests").delete().eq("id", requestId)
-    } else if (fromName && toName) {
+    }
+    if (fromName && toName) {
       await supabase
         .from("connection_requests")
         .delete()
-        .ilike("from_name", fromName)
-        .ilike("to_name", toName)
+        .ilike("from_name", fromName.trim())
+        .ilike("to_name", toName.trim())
     }
   } catch (err) {
     console.warn("Could not decline connection request in DB:", err)
@@ -1269,37 +1315,69 @@ export async function cancelConnectionRequestInDb(fromName: string, toName: stri
   }
 }
 
-export async function syncNotificationsFromDb(userName: string): Promise<any[]> {
-  if (!userName) return []
+export async function syncNotificationsFromDb(
+  userName: string,
+  userUsername?: string
+): Promise<any[]> {
+  if (!userName && !userUsername) return []
   try {
-    const { data } = await supabase
-      .from("notifications")
-      .select("*")
-      .ilike("user_name", userName.trim())
-      .order("created_at", { ascending: false })
-      .limit(40)
+    const cleanName = userName ? userName.trim() : ""
+    const cleanUser = userUsername ? userUsername.trim() : ""
 
-    if (data && Array.isArray(data)) {
-      return data.map((n: any) => ({
-        id: n.id,
-        type: n.type || "connection_received",
-        title: n.title,
-        message: n.message,
-        timestamp: n.created_at
-          ? new Date(n.created_at).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "Just now",
-        read: n.is_read || false,
-        linkUrl: n.link_url,
-        sourceName: n.source_name,
-        sourceAvatar: n.source_avatar,
-        communityName: n.community_name,
-      }))
+    const promises: Promise<any>[] = []
+    if (cleanName) {
+      promises.push(
+        Promise.resolve(
+          supabase
+            .from("notifications")
+            .select("*")
+            .ilike("user_name", cleanName)
+            .order("created_at", { ascending: false })
+            .limit(40)
+        )
+      )
     }
+    if (cleanUser && cleanUser.toLowerCase() !== cleanName.toLowerCase()) {
+      promises.push(
+        Promise.resolve(
+          supabase
+            .from("notifications")
+            .select("*")
+            .ilike("user_name", cleanUser)
+            .order("created_at", { ascending: false })
+            .limit(40)
+        )
+      )
+    }
+
+    const results = await Promise.all(promises)
+    const all = results.flatMap((r) => r.data || [])
+    const seen = new Set<string>()
+    const unique = all.filter((n) => {
+      if (!n || !n.id || seen.has(n.id)) return false
+      seen.add(n.id)
+      return true
+    })
+
+    return unique.map((n: any) => ({
+      id: n.id,
+      type: n.type || "connection_received",
+      title: n.title,
+      message: n.message,
+      timestamp: n.created_at
+        ? new Date(n.created_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "Just now",
+      read: n.is_read || false,
+      linkUrl: n.link_url,
+      sourceName: n.source_name,
+      sourceAvatar: n.source_avatar,
+      communityName: n.community_name,
+    }))
   } catch (err) {
     console.warn("Could not sync notifications from DB:", err)
   }

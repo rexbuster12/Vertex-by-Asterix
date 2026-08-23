@@ -7,7 +7,7 @@ import {
   mergeRemoteNotifications,
 } from "../lib/notificationStore"
 import { signOutStudent, syncNotificationsFromDb } from "../lib/supabaseService"
-import { getActiveProfile } from "../lib/tempStore"
+import { getActiveProfile, getActiveUser } from "../lib/tempStore"
 
 function Navbar() {
   const navigate = useNavigate()
@@ -22,9 +22,12 @@ function Navbar() {
 
     async function syncNotifs() {
       const active = getActiveProfile()
-      if (active?.display_name) {
+      const user = getActiveUser()
+      const targetName = active?.display_name || user?.name || ""
+      const targetUser = active?.username || user?.username || ""
+      if (targetName || targetUser) {
         try {
-          const remoteNotifs = await syncNotificationsFromDb(active.display_name)
+          const remoteNotifs = await syncNotificationsFromDb(targetName, targetUser)
           if (remoteNotifs && remoteNotifs.length > 0) {
             mergeRemoteNotifications(remoteNotifs)
           }

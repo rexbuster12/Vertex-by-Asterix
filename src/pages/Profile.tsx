@@ -44,12 +44,15 @@ function Profile() {
   const [isReportOpen, setIsReportOpen] = useState(false)
 
   const active = getActiveProfile()
+  const user = getActiveUser()
+  const activeName = active?.display_name || user?.name || ""
+  const activeUsername = active?.username || user?.username || ""
 
   useEffect(() => {
     async function syncRemote() {
-      if (active?.display_name) {
+      if (activeName || activeUsername) {
         try {
-          const remoteReqs = await syncConnectionRequestsFromDb(active.display_name)
+          const remoteReqs = await syncConnectionRequestsFromDb(activeName, activeUsername)
           if (remoteReqs && remoteReqs.length > 0) {
             mergeRemoteConnectionRequests(remoteReqs)
             setConnectionVersion((v) => v + 1)
@@ -58,9 +61,9 @@ function Profile() {
       }
     }
     syncRemote()
-    const interval = setInterval(syncRemote, 4000)
+    const interval = setInterval(syncRemote, 3000)
     return () => clearInterval(interval)
-  }, [active?.display_name])
+  }, [activeName, activeUsername])
 
   useEffect(() => {
     async function loadProfile() {
