@@ -1,73 +1,73 @@
 import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router"
-import { supabase } from "../lib/supabase"
+import { Megaphone } from "lucide-react"
 import CommunityCard, { type CommunityCardProps } from "../components/CommunityCard"
+import { getStoredCommunities } from "../lib/mockStore"
 
-const SAMPLE_CAMPUS_CIRCLES: CommunityCardProps[] = [
-  {
-    name: "Full-Stack & Systems Guild",
-    members: 148,
-    description: "Building production web apps, exploring Rust & Go distributed systems, and shipping weekend open-source tools.",
-    tags: ["Coding", "FullStack", "Rust", "Hackathons"],
-    image: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=900&q=80",
-    whatsapp_link: "https://chat.whatsapp.com/demo-guild",
-  },
-  {
-    name: "Campus Moot Court Society",
-    members: 86,
-    description: "Briefing constitutional law cases, mock trials, bilateral negotiation rounds, and national debate training.",
-    tags: ["Law", "Debating", "MootCourt", "Policy"],
-    image: "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=900&q=80",
-    instagram_link: "https://instagram.com/mootcourtsociety",
-  },
-  {
-    name: "Human-Centered Design Lab",
-    members: 112,
-    description: "Weekly design critiques, Figma jams, physical typography zine printing, and UX testing on real campus projects.",
-    tags: ["Design", "UIUX", "Typography", "Figma"],
-    image: "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=900&q=80",
-    instagram_link: "https://instagram.com/designlab_campus",
-  },
-  {
-    name: "Autonomous Robotics & Drone Cell",
-    members: 74,
-    description: "ROS2 development, LiDAR mapping, PCB soldering, and competitive drone racing across inter-college circuits.",
-    tags: ["Robotics", "Hardware", "ROS2", "AI"],
-    image: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=900&q=80",
-    whatsapp_link: "https://chat.whatsapp.com/demo-robotics",
-  },
-]
+interface HomeAnnouncement {
+  id: string
+  communityName: string
+  title: string
+  content: string
+  date: string
+  author: string
+  tag?: string
+  image?: string
+  likes?: number
+  dislikes?: number
+}
 
 function Home() {
   const navigate = useNavigate()
   const [dbCommunities, setDbCommunities] = useState<CommunityCardProps[]>([])
+  const [announcements, setAnnouncements] = useState<HomeAnnouncement[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function loadRecent() {
-      try {
-        setLoading(true)
-        const { data, error } = await supabase
-          .from("communities")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(4)
+    try {
+      setLoading(true)
+      const list = getStoredCommunities()
+      const mapped: CommunityCardProps[] = list.slice(0, 4).map((c) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        members: c.members_count || c.members?.length || 1,
+        members_count: c.members_count || c.members?.length || 1,
+        whatsapp_link: c.whatsapp_link,
+        instagram_link: c.instagram_link,
+        image: c.image,
+      }))
+      setDbCommunities(mapped)
 
-        if (!error && data && data.length > 0) {
-          setDbCommunities(data)
-        } else {
-          setDbCommunities(SAMPLE_CAMPUS_CIRCLES)
+      // Collect all announcements from communities
+      const collected: HomeAnnouncement[] = []
+      list.forEach((comm) => {
+        if (comm.announcements && comm.announcements.length > 0) {
+          comm.announcements.forEach((ann) => {
+            collected.push({
+              id: ann.id,
+              communityName: comm.name,
+              title: ann.title,
+              content: ann.content,
+              date: ann.date,
+              author: ann.author,
+              tag: ann.tag,
+              image: ann.image,
+              likes: ann.likes || 0,
+              dislikes: ann.dislikes || 0,
+            })
+          })
         }
-      } catch (err) {
-        console.error("Error loading home communities:", err)
-        setDbCommunities(SAMPLE_CAMPUS_CIRCLES)
-      } finally {
-        setLoading(false)
-      }
+      })
+      setAnnouncements(collected)
+    } catch (err) {
+      console.error("Error loading home communities:", err)
+      setDbCommunities([])
+      setAnnouncements([])
+    } finally {
+      setLoading(false)
     }
-
-    loadRecent()
   }, [])
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -79,7 +79,7 @@ function Home() {
     }
   }
 
-  const displayList = dbCommunities.length > 0 ? dbCommunities : SAMPLE_CAMPUS_CIRCLES
+  const displayList = dbCommunities
 
   return (
     <div className="home-zine-shell">
@@ -88,16 +88,13 @@ function Home() {
           <div className="zine-blank" aria-hidden="true" />
 
           <form onSubmit={handleSearchSubmit} className="zine-search">
-            <span>(</span>
             <span className="zine-search-mark">⌕</span>
-            <span className="zine-search-divider">|</span>
             <input
               type="text"
-              placeholder="Search communities, topics, clubs..."
+              placeholder="Search communities"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <span>)</span>
           </form>
 
           <Link to="/profile" className="zine-profile" aria-label="My profile">
@@ -144,27 +141,122 @@ function Home() {
         </div>
 
         <div className="zine-footer-block">
-          <p className="zine-subtitle">CHOOSE THE FOLLOWING PAGES TO VISIT</p>
-
           <div className="zine-links">
             <Link to="/communities" className="zine-link zine-link--dark">JOINED COMMUNITIES</Link>
-            <Link to="/communities" className="zine-link">MORE COMMUNITIES</Link>
-            <Link to="/create-community" className="zine-link">NOTICEBOARD</Link>
-            <Link to="/profile" className="zine-link">MY PROFILE</Link>
+            <Link to="/communities" className="zine-link">EXPLORE COMMUNITIES</Link>
+            <Link to="/create-community" className="zine-link">CREATE COMMUNITY</Link>
           </div>
         </div>
       </section>
 
-      <section className="zine-lower" aria-hidden="true">
-        <div className="zine-lower-shape zine-lower-shape--left" />
-        <div className="zine-lower-shape zine-lower-shape--right" />
+      {/* Middle Bubble Container: Live Community Announcements Feed */}
+      <section className="zine-lower relative p-5 sm:p-7 flex flex-col justify-between overflow-hidden">
+        <div className="zine-lower-shape zine-lower-shape--left pointer-events-none" aria-hidden="true" />
+        <div className="zine-lower-shape zine-lower-shape--right pointer-events-none" aria-hidden="true" />
+
+        {/* Section Header */}
+        <div className="relative z-10 flex items-center justify-between border-b-2 border-[#141c2b]/15 pb-3">
+          <div className="flex items-center gap-2">
+            <Megaphone className="w-4 h-4 text-[#d84c23]" />
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#141c2b]">
+              Campus Bulletins & Announcements Feed
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {announcements.length > 0 && (
+              <span className="font-mono text-[10px] font-black uppercase bg-[#d84c23] text-white px-2 py-0.5 rounded-xs shadow-[1px_1px_0px_#141c2b]">
+                {announcements.length} Live
+              </span>
+            )}
+            <Link
+              to="/notifications"
+              className="font-mono text-[11px] font-bold text-[#141c2b] hover:text-[#d84c23] uppercase underline"
+            >
+              All Alerts →
+            </Link>
+          </div>
+        </div>
+
+        {/* Announcements Content */}
+        <div className="relative z-10 my-auto py-3.5">
+          {announcements.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {announcements.slice(0, 3).map((item) => (
+                <Link
+                  key={item.id}
+                  to={`/communities/${encodeURIComponent(item.communityName)}`}
+                  className="group bg-white/95 backdrop-blur-xs border-2 border-[#141c2b] p-4 rounded-sm shadow-[3px_3px_0px_#141c2b] hover:bg-white hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                      <span className="font-mono text-[9px] font-black uppercase px-2 py-0.5 bg-[#141c2b] text-white rounded-2xs">
+                        {item.tag || "NOTICE"}
+                      </span>
+                      <span className="font-mono text-[10px] text-[#545e6d]">{item.date}</span>
+                    </div>
+
+                    <div>
+                      <span className="font-mono text-[10px] font-bold text-[#d84c23] uppercase block truncate">
+                        {item.communityName}
+                      </span>
+                      <h4 className="font-serif font-bold text-base text-[#141c2b] group-hover:text-[#d84c23] transition-colors line-clamp-1">
+                        {item.title}
+                      </h4>
+                    </div>
+
+                    {item.image && (
+                      <div className="h-24 w-full overflow-hidden rounded-2xs border border-[#141c2b] my-1">
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+                    )}
+
+                    <p className="text-xs text-[#545e6d] line-clamp-2 leading-relaxed">
+                      {item.content}
+                    </p>
+                  </div>
+
+                  <div className="pt-2.5 mt-3 border-t border-[#141c2b]/10 flex items-center justify-between font-mono text-[10px] text-[#8892a0]">
+                    <span>By <b>{item.author}</b> {((item.likes || 0) > 0 || (item.dislikes || 0) > 0) && `• 👍 ${item.likes || 0}`}</span>
+                    <span className="text-[#141c2b] font-bold group-hover:text-[#d84c23]">
+                      View Bulletin →
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 sm:py-8 space-y-2 max-w-lg mx-auto">
+              <div className="w-10 h-10 rounded-full bg-white border-2 border-[#141c2b] flex items-center justify-center mx-auto text-[#d84c23] shadow-[2px_2px_0px_#141c2b]">
+                <Megaphone className="w-5 h-5" />
+              </div>
+              <h3 className="font-serif text-lg sm:text-xl font-black text-[#141c2b]">
+                Campus Community Bulletins
+              </h3>
+              <p className="text-xs text-[#545e6d] leading-relaxed">
+                When you create or join communities, announcements, event schedules, and important club notices are broadcast here in real-time.
+              </p>
+              <div className="pt-1">
+                <Link
+                  to="/create-community"
+                  className="font-mono text-xs font-bold uppercase text-[#d84c23] hover:underline inline-flex items-center gap-1"
+                >
+                  <span> Create a Community to Post First Announcement</span>
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="zine-discovery">
         <div className="zine-discovery-header">
           <div>
-            <p className="zine-kicker">VERTEX EXPLORER // ACTIVE CIRCLES</p>
-            <h2>Trending Campus Circles</h2>
+            <p className="zine-kicker">VERTEX EXPLORER // ACTIVE COMMUNITIES</p>
+            <h2>Trending Campus Communities</h2>
           </div>
           <Link to="/communities">Explore All ({displayList.length}+) →</Link>
         </div>
@@ -173,6 +265,16 @@ function Home() {
           <div className="zine-loading">
             <div className="zine-spinner" />
             Syncing campus database...
+          </div>
+        ) : displayList.length === 0 ? (
+          <div className="py-16 text-center bg-[#faf7f2] border-2 border-dashed border-[#141c2b] rounded-lg">
+            <h3 className="font-serif text-xl font-bold text-[#141c2b]">No communities yet</h3>
+            <p className="text-sm text-[#545e6d] max-w-lg mx-auto mt-2">The community board is empty. Create the first community to get started.</p>
+            <div className="mt-4">
+              <Link to="/create-community" className="primary-action" style={{ padding: "0.55rem 1.1rem" }}>
+                + Create Community
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="zine-grid">

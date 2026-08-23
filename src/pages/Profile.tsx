@@ -1,56 +1,52 @@
 import { useState, useEffect } from "react"
-import { Link } from "react-router"
+import { Link, useSearchParams } from "react-router"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
-
-const PROFILE_KEY = "vertex_profile_v1"
-
-const DEFAULT_PROFILE: ProfileData = {
-  display_name: "Alex Chen",
-  bio: "Passionate about full-stack architectures, distributed systems, open-source campus tools, and weekend blitz chess.",
-  branch: "B.Tech CSE",
-  batch: "2026–2030",
-  avatar_url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80",
-  instagram_url: "https://instagram.com/alexchen_dev",
-  linkedin_url: "https://linkedin.com/in/alexchen-campus",
-}
-
-const MY_COMMUNITIES = [
-  { name: "Full-Stack & Systems Guild", members: 148, role: "Founder / Core" },
-  { name: "Campus Chess & Blitz Guild", members: 92, role: "Active Member" },
-]
+import { getActiveProfile, setActiveProfile } from "../lib/tempStore"
 
 function Profile() {
-  const [profile, setProfile] = useState<ProfileData>(DEFAULT_PROFILE)
+  const [searchParams] = useSearchParams()
+  const previewParam = searchParams.get("preview")
+  const [profile, setProfile] = useState<ProfileData | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
-  const [interests, setInterests] = useState<string[]>([
-    "Full-Stack Dev",
-    "Rust",
-    "UI/UX Design",
-    "Chess Tactics",
-    "Open Source",
-  ])
+  const [interests, setInterests] = useState<string[]>([])
   const [newInterest, setNewInterest] = useState("")
   const [isAddingInterest, setIsAddingInterest] = useState(false)
+  const [isPreviewing, setIsPreviewing] = useState(false)
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(PROFILE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored) as ProfileData
-        setProfile(parsed)
+      if (previewParam) {
+        const previewRaw = localStorage.getItem("vertex_preview_profile")
+        if (previewRaw) {
+          const parsed = JSON.parse(previewRaw) as ProfileData
+          setProfile(parsed)
+          setIsPreviewing(true)
+          setInterests([])
+          return
+        }
+      }
+
+      // Read from temporary in-memory store (resets on refresh)
+      const active = getActiveProfile()
+      if (active) {
+        setProfile(active)
+        setIsPreviewing(false)
+        setInterests([])
+      } else {
+        // No saved profile on fresh load/refresh
+        setProfile(null)
+        setIsPreviewing(false)
+        setInterests([])
       }
     } catch {
-      // Keep default
+      setProfile(null)
     }
-  }, [])
+  }, [previewParam])
 
   function handleSave(data: ProfileData) {
     setProfile(data)
-    try {
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(data))
-    } catch {
-      console.warn("localStorage save failed")
-    }
+    setActiveProfile(data)
+    console.log("🚀 [PROFILE UPDATED - SAVED TO TEMPORARY CONSOLE (RESETS ON REFRESH)]:", data)
     setIsEditOpen(false)
   }
 
@@ -68,29 +64,57 @@ function Profile() {
   }
 
   const initials =
-    profile.display_name
+    (profile?.display_name || "")
       .split(" ")
       .slice(0, 2)
-      .map((w) => w[0])
+      .map((w) => (w ? w[0] : ""))
       .join("")
-      .toUpperCase() || "AC"
+      .toUpperCase() || "ST"
+
+  if (!profile) {
+    return (
+      <div className="editorial-shell space-y-6">
+        <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-8 sm:p-10 shadow-[6px_6px_0px_#141c2b] space-y-4 text-center">
+          <span className="font-mono text-xs font-bold text-[#d84c23] uppercase tracking-wider">
+            STATUS // NO ACTIVE PROFILE
+          </span>
+          <h2 className="font-serif text-3xl font-black text-[#141c2b]">
+            No student profile found
+          </h2>
+          <p className="text-sm text-[#545e6d] max-w-xl mx-auto">
+            You are starting fresh from the beginning. Create your student profile to browse and join communities.
+          </p>
+          <div className="flex justify-center gap-3 pt-4">
+            <Link to="/profile/create" className="primary-action" style={{ padding: "0.65rem 1.25rem" }}>
+              + Create Profile
+            </Link>
+            <Link to="/communities" className="secondary-action" style={{ padding: "0.65rem 1.25rem" }}>
+              Explore Communities
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
       <div className="editorial-shell space-y-6">
-        {/* ── EDITORIAL STUDENT PRESS PASS / BADGE HEADER ─────────── */}
+        {/* ── STUDENT PROFILE HEADER ─────────── */}
         <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 sm:p-8 shadow-[6px_6px_0px_#141c2b] space-y-6">
           <div className="flex items-center justify-between border-b-2 border-[#141c2b] pb-3">
             <span className="font-mono text-xs font-bold text-[#d84c23] uppercase tracking-wider">
-              VERTEX STUDENT IDENTIFICATION // BADGE #VX-8429
+              {isPreviewing
+                ? `STUDENT DIRECTORY PROFILE // ${profile.display_name.toUpperCase()}`
+                : "VERTEX STUDENT IDENTIFICATION // PROFILE"}
             </span>
             <span className="font-mono text-[11px] font-bold text-[#141c2b] bg-[#eae2d5] px-2 py-0.5 border border-[#141c2b]">
-              VERIFIED CAMPUS MEMBER
+              VERIFIED CAMPUS STUDENT
             </span>
           </div>
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            {/* Photo Stamp */}
+            {/* Photo */}
             <div className="relative flex-shrink-0">
               {profile.avatar_url ? (
                 <img
@@ -111,6 +135,11 @@ function Profile() {
                 <h1 className="text-3xl sm:text-4xl font-extrabold text-[#141c2b] tracking-tight">
                   {profile.display_name}
                 </h1>
+                {profile.username && (
+                  <span className="font-mono text-xs font-bold text-[#d84c23] bg-[#fbe8e6] border border-[#d84c23] px-2 py-0.5 rounded-xs">
+                    @{profile.username}
+                  </span>
+                )}
                 {profile.branch && (
                   <span className="font-mono text-xs font-bold px-2.5 py-0.5 bg-[#141c2b] text-white rounded-xs">
                     {profile.branch}
@@ -122,6 +151,32 @@ function Profile() {
                   </span>
                 )}
               </div>
+
+              {/* Clubs & Sports Affiliations */}
+              {(profile.major_club || profile.major_sport || profile.minor_club || profile.minor_sport || profile.community_club) && (
+                <div className="flex items-center gap-2 flex-wrap pt-1">
+                  {(profile.major_club || profile.major_sport) && (
+                    <span className="font-mono text-[11px] font-bold px-2.5 py-0.5 bg-[#d84c23] text-white rounded-xs flex items-center gap-1 shadow-[1.5px_1.5px_0px_#141c2b]">
+                      ★ Major: {profile.major_club === "Sports" ? `Sport — ${profile.major_sport || "Sports"}` : profile.major_club}
+                    </span>
+                  )}
+                  {profile.minor_club && (
+                    <span className="font-mono text-[11px] font-bold px-2.5 py-0.5 bg-[#141c2b] text-white rounded-xs flex items-center gap-1 shadow-[1.5px_1.5px_0px_#141c2b]">
+                      ✧ Minor Club: {profile.minor_club}
+                    </span>
+                  )}
+                  {profile.minor_sport && (
+                    <span className="font-mono text-[11px] font-bold px-2.5 py-0.5 bg-[#2563eb] text-white rounded-xs flex items-center gap-1 shadow-[1.5px_1.5px_0px_#141c2b]">
+                      ⚽ Minor Sport: {profile.minor_sport}
+                    </span>
+                  )}
+                  {profile.community_club && (
+                    <span className="font-mono text-[11px] font-bold px-2.5 py-0.5 bg-[#eae2d5] text-[#141c2b] border-1.5 border-[#141c2b] rounded-xs flex items-center gap-1 shadow-[1.5px_1.5px_0px_#141c2b]">
+                      🤝 Community Club: {profile.community_club}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <p className="text-sm text-[#545e6d] max-w-2xl leading-relaxed">
                 {profile.bio || "Student member on Vertex Campus."}
@@ -155,39 +210,34 @@ function Profile() {
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col gap-2.5 self-start sm:self-center">
-              <button
-                onClick={() => setIsEditOpen(true)}
-                className="primary-action text-xs font-mono"
-                style={{ padding: "0.65rem 1.25rem" }}
-              >
-                ✏ Edit Badge
-              </button>
-              <Link
-                to="/profile/create"
-                className="secondary-action text-xs font-mono"
-                style={{ padding: "0.65rem 1.25rem", textAlign: "center" }}
-              >
-                + Create Profile
-              </Link>
-              <Link
-                to="/create-community"
-                className="secondary-action text-xs font-mono"
-                style={{ padding: "0.65rem 1.25rem", textAlign: "center" }}
-              >
-                + Pin Community
-              </Link>
-            </div>
+            {!isPreviewing && (
+              <div className="flex flex-col gap-2.5 self-start sm:self-center">
+                <button
+                  onClick={() => setIsEditOpen(true)}
+                  className="primary-action text-xs font-mono cursor-pointer"
+                  style={{ padding: "0.65rem 1.25rem" }}
+                >
+                  ✏ Edit Profile
+                </button>
+                <Link
+                  to="/create-community"
+                  className="secondary-action text-xs font-mono"
+                  style={{ padding: "0.65rem 1.25rem", textAlign: "center" }}
+                >
+                  + Create Community
+                </Link>
+              </div>
+            )}
           </div>
 
-          {/* Stats Bar */}
+          {/* Clean Real Stats Bar: 0 Initial Joined Communities, 0 Connections, 0 Interests */}
           <div className="grid grid-cols-3 gap-4 pt-4 border-t-2 border-[#141c2b] max-w-md">
             <div>
-              <p className="font-serif text-2xl font-black text-[#141c2b]">{MY_COMMUNITIES.length}</p>
-              <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Joined Hubs</p>
+              <p className="font-serif text-2xl font-black text-[#141c2b]">0</p>
+              <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Joined Communities</p>
             </div>
             <div>
-              <p className="font-serif text-2xl font-black text-[#d84c23]">18</p>
+              <p className="font-serif text-2xl font-black text-[#d84c23]">0</p>
               <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Connections</p>
             </div>
             <div>
@@ -197,34 +247,29 @@ function Profile() {
           </div>
         </div>
 
-        {/* ── 2-COLUMN SECTION: JOINED HUBS & INTERESTS ──────────── */}
+        {/* ── 2-COLUMN SECTION: JOINED COMMUNITIES & INTERESTS ──────────── */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           {/* Joined Communities (7 cols) */}
           <div className="md:col-span-7 bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 shadow-[4px_4px_0px_#141c2b] space-y-4">
             <div className="flex items-center justify-between border-b border-[#d8cebe] pb-2">
               <h2 className="font-serif text-xl font-bold text-[#141c2b]">
-                Active Memberships
+                Joined Communities
               </h2>
               <Link to="/communities" className="font-mono text-xs font-bold text-[#d84c23] hover:underline">
-                Explore All Noticeboards →
+                Explore Communities →
               </Link>
             </div>
 
             <div className="space-y-3">
-              {MY_COMMUNITIES.map((comm, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3.5 bg-[#f5f1ea] border border-[#141c2b] rounded-sm shadow-[2px_2px_0px_#141c2b]"
-                >
-                  <div>
-                    <h4 className="font-serif font-bold text-base text-[#141c2b]">{comm.name}</h4>
-                    <p className="font-mono text-xs text-[#545e6d] mt-0.5">{comm.members} active students</p>
-                  </div>
-                  <span className="font-mono text-xs font-bold px-2 py-0.5 bg-[#faf7f2] text-[#141c2b] border border-[#141c2b] rounded-xs">
-                    {comm.role}
-                  </span>
+              <div className="text-center py-8 px-4 bg-[#faf7f2] border-2 border-dashed border-[#141c2b] rounded-lg space-y-2">
+                <p className="font-serif font-bold text-base text-[#141c2b]">No communities joined yet</p>
+                <p className="text-xs text-[#545e6d]">Browse campus communities and join the ones that match your interests.</p>
+                <div className="pt-2">
+                  <Link to="/communities" className="primary-action text-xs font-mono" style={{ padding: "0.5rem 1rem" }}>
+                    Explore Communities →
+                  </Link>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
 
@@ -246,7 +291,7 @@ function Profile() {
               <form onSubmit={handleAddInterest} className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="e.g. ROS2, Moot Court, AI"
+                  placeholder="e.g. AI, Web3, Chess"
                   value={newInterest}
                   onChange={(e) => setNewInterest(e.target.value)}
                   className="flex-1 px-3 py-1.5 bg-[#f5f1ea] border border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] focus:outline-none"
@@ -258,23 +303,29 @@ function Profile() {
               </form>
             )}
 
-            <div className="flex flex-wrap gap-2">
-              {interests.map((interest) => (
-                <span
-                  key={interest}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#f5f1ea] border border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] shadow-[1px_1px_0px_#141c2b]"
-                >
-                  <span>#{interest}</span>
-                  <button
-                    onClick={() => handleRemoveInterest(interest)}
-                    className="text-[#8892a0] hover:text-[#d84c23] ml-1 cursor-pointer"
-                    title="Remove"
+            {interests.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {interests.map((interest) => (
+                  <span
+                    key={interest}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#f5f1ea] border border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] shadow-[1px_1px_0px_#141c2b]"
                   >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
+                    <span>#{interest}</span>
+                    <button
+                      onClick={() => handleRemoveInterest(interest)}
+                      className="text-[#8892a0] hover:text-[#d84c23] ml-1 cursor-pointer"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="font-mono text-xs text-[#8892a0] italic py-2">
+                No tags added yet. Click "+ Add Tag" to add your skills and interests.
+              </p>
+            )}
           </div>
         </div>
       </div>

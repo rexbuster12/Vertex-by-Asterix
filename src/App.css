@@ -20,6 +20,23 @@
   }
 }
 
+@keyframes zoomInBlur {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+    filter: blur(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-zoom-in-blur {
+  animation: zoomInBlur 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @keyframes zineFloat {
   0%, 100% {
     transform: translateY(0px) rotate(0deg);
@@ -195,8 +212,11 @@
 
 .zine-links {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .zine-link {
@@ -336,7 +356,7 @@
 
 @media (max-width: 900px) {
   .zine-links {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .zine-grid {
@@ -518,6 +538,438 @@ letter-spacing: 0.06em;
   }
 
   .template-nav-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr; /* mobile fall-back */
+  }
+
+}
+
+/* =========================================
+   AUTH SCREEN — VERTEX OPENING ANIMATION
+   ========================================= */
+
+.vertex-auth-shell {
+  width: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #c9c1b3;
+  position: relative;
+}
+
+.vertex-intro-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #c9c1b3;
+  animation: introBlurOut 0.8s ease 2.5s forwards;
+}
+
+.vertex-intro-animation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vertex-logo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.vertex-logo-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.vertex-intro-logo {
+  width: 190px;
+  animation: exactLogoAppear 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.vertex-intro-logo .vertex-logo-image {
+  animation: logoBlur 0.8s ease 2.5s forwards;
+}
+
+.vertex-wordmark {
+  margin-top: 14px;
+  color: #111118;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 10px;
+  padding-left: 10px;
+  opacity: 0;
+  animation: wordAppear 0.5s ease 1.55s forwards, wordDisappear 0.5s ease 2.5s forwards;
+}
+
+.vertex-wordmark-card {
+  margin-top: 0.55rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #141c2b;
+}
+
+.small-logo {
+  width: 100px;
+  margin: 0 auto 1.8rem;
+}
+
+@keyframes wordAppear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
+
+@keyframes wordDisappear {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes exactLogoAppear {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+    filter: blur(3px);
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes logoBlur {
+  0% {
+    filter: blur(0);
+    transform: scale(1);
+  }
+
+  100% {
+    filter: blur(18px);
+    transform: scale(1.08);
+  }
+}
+
+@keyframes introBlurOut {
+  0% {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 0;
+    filter: blur(18px);
+    visibility: hidden;
+  }
+}
+
+.vertex-auth-page {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  background: #c9c1b3;
+  transition: opacity 0.7s ease, filter 0.7s ease;
+}
+
+.auth-waiting {
+  opacity: 0;
+  filter: blur(12px);
+}
+
+.auth-show {
+  opacity: 1;
+  filter: blur(0);
+}
+
+.vertex-auth-card {
+  width: 100%;
+  max-width: 780px;
+  padding: 48px 56px 44px;
+  text-align: center;
+  background: #faf7f2;
+  border: 2px solid #141c2b;
+  border-radius: 16px;
+  box-shadow: 8px 8px 0px #141c2b;
+}
+
+.vertex-auth-header {
+  margin-bottom: 1.5rem;
+}
+
+.vertex-auth-header h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.85rem, 3.2vw, 2.4rem);
+  line-height: 1.05;
+  letter-spacing: -0.05em;
+  font-weight: 800;
+  color: #141c2b;
+}
+
+.vertex-auth-header p {
+  margin: 0;
+  color: #4c5765;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.vertex-auth-form {
+  display: grid;
+  gap: 1.1rem;
+  text-align: left;
+}
+
+.vertex-form-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.vertex-form-field label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #141c2b;
+}
+
+.vertex-form-field input {
+  width: 100%;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  border-radius: 0 !important;
+  color: #141c2b;
+  font-size: 0.95rem;
+}
+
+.vertex-form-field input::placeholder {
+  color: #8892a0;
+}
+
+.vertex-form-field input:focus {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.vertex-password-wrap {
+  position: relative;
+}
+
+.vertex-password-wrap input {
+  padding-right: 4.25rem;
+}
+
+.vertex-password-wrap button {
+  position: absolute;
+  top: 50%;
+  right: 0.8rem;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: #141c2b;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.vertex-auth-message {
+  padding: 0.75rem 0.9rem;
+  border: 2px solid #141c2b;
+  border-radius: 8px;
+  background: #fbe8e6;
+  color: #a9392d;
+  font-family: var(--font-mono);
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.vertex-auth-submit {
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.vertex-auth-toggle {
+  margin-top: 1.2rem;
+  text-align: center;
+}
+
+.vertex-auth-toggle button {
+  border: none;
+  background: transparent;
+  color: #141c2b;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.vertex-auth-toggle button:hover {
+  text-decoration: underline;
+}
+
+/* 3D shadowy button with dynamic animation used across CTAs */
+.btn-3d {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.05rem;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: transform 180ms cubic-bezier(.2,.9,.2,1), box-shadow 180ms ease, background-color 180ms ease, color 180ms ease;
+  box-shadow: 6px 6px 0px #141c2b;
+  transform: translateY(0);
+  position: relative;
+}
+
+.btn-3d:hover {
+  transform: translateY(-3px);
+  box-shadow: 10px 10px 0px rgba(20,28,43,0.95);
+}
+
+.btn-3d:active {
+  transform: translateY(1px) scale(0.995);
+  box-shadow: 3px 3px 0px rgba(20,28,43,0.95);
+}
+
+/* Primary variant */
+.btn-3d.primary {
+  background: #141c2b;
+  color: #faf7f2;
+  border: 2px solid #141c2b;
+}
+
+.btn-3d.primary:hover {
+  background: linear-gradient(180deg, #2a323f 0%, #141c2b 100%);
+}
+
+/* Secondary (light) variant */
+.btn-3d.secondary {
+  background: #faf7f2;
+  color: #141c2b;
+  border: 2px solid #141c2b;
+}
+
+.btn-3d.secondary:hover {
+  background: #f0ece6;
+}
+
+/* Slight breathing animation for primary CTA to draw attention */
+@keyframes btnPulse {
+  0% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.01); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.btn-3d.primary.attention {
+  animation: btnPulse 3.8s ease-in-out infinite;
+}
+
+/* ── Universal Tactile Buttons (Primary & Secondary Actions) ────── */
+.primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: #141c2b;
+  color: #faf7f2 !important;
+  border: 2px solid #141c2b;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.65rem 1.25rem;
+  box-shadow: 3px 3px 0px #d84c23;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.primary-action:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0px #d84c23;
+  background: #1c2638;
+  color: #ffffff !important;
+}
+
+.primary-action:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px #d84c23;
+}
+
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: #faf7f2;
+  color: #141c2b !important;
+  border: 2px solid #141c2b;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.65rem 1.25rem;
+  box-shadow: 3px 3px 0px #141c2b;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.secondary-action:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0px #141c2b;
+  background: #eae2d5;
+  color: #141c2b !important;
+}
+
+.secondary-action:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px #141c2b;
+}
+

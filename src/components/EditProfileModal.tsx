@@ -1,15 +1,21 @@
 import { useState, useRef, useEffect } from "react"
-import { supabase } from "../lib/supabase"
 import { screenFields, validateInstagramLink, validateLinkedInLink } from "../lib/contentFilter"
+import { COMMUNITY_CLUBS, MAJOR_CLUBS, REGULAR_CLUBS } from "../lib/clubsData"
 
 export type ProfileData = {
   display_name: string
+  username?: string
   bio: string
   branch: string
   batch: string
   avatar_url: string
   instagram_url: string
   linkedin_url: string
+  major_club?: string
+  major_sport?: string
+  minor_club?: string
+  minor_sport?: string
+  community_club?: string
 }
 
 type Props = {
@@ -35,7 +41,7 @@ const BRANCHES = [
   "B.Sc",
   "M.Sc",
   "MCA",
-  "PhD",
+  "Ph. D.",
   "Other",
 ]
 
@@ -47,10 +53,8 @@ const BATCHES = [
 export default function EditProfileModal({ initialData, onSave, onClose }: Props) {
   const [form, setForm] = useState<ProfileData>({ ...initialData })
   const [avatarPreview, setAvatarPreview] = useState<string>(initialData.avatar_url)
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const modalRef = useRef<HTMLDivElement>(null)
 
@@ -68,7 +72,6 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
 
   function handleField(field: keyof ProfileData, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
-    setError(null)
   }
 
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -78,7 +81,6 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
       setError("Profile picture must be under 5 MB.")
       return
     }
-    setAvatarFile(file)
     setAvatarPreview(URL.createObjectURL(file))
     setError(null)
   }
@@ -114,36 +116,13 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
     setSaving(true)
 
     try {
-      let finalAvatarUrl = form.avatar_url
-
-      if (avatarFile) {
-        setUploadProgress("Uploading badge photo...")
-        const ext = avatarFile.name.split(".").pop()
-        const fileName = `avatar_${Date.now()}.${ext}`
-
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(fileName, avatarFile, { upsert: true })
-
-        if (uploadError) {
-          console.warn("Storage upload failed, using local preview:", uploadError.message)
-          finalAvatarUrl = avatarPreview
-        } else {
-          const { data: urlData } = supabase.storage
-            .from("avatars")
-            .getPublicUrl(fileName)
-          finalAvatarUrl = urlData.publicUrl
-        }
-        setUploadProgress(null)
-      }
-
+      const finalAvatarUrl = avatarPreview || form.avatar_url
       const saved: ProfileData = { ...form, avatar_url: finalAvatarUrl }
       onSave(saved)
     } catch (err: any) {
       setError(err.message || "Failed to save student profile.")
     } finally {
       setSaving(false)
-      setUploadProgress(null)
     }
   }
 
@@ -162,9 +141,9 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
         <div className="flex items-center justify-between px-6 py-4 bg-[#f5f1ea] border-b-2 border-[#141c2b]">
           <div>
             <span className="font-mono text-[10px] font-bold text-[#d84c23] uppercase">
-              STUDENT BADGE // REGISTRATION
+              STUDENT PROFILE // SETTINGS
             </span>
-            <h2 className="font-serif text-xl font-extrabold text-[#141c2b]">Edit Profile Badge</h2>
+            <h2 className="font-serif text-xl font-extrabold text-[#141c2b]">Edit Student Profile</h2>
           </div>
           <button
             onClick={onClose}
@@ -284,6 +263,98 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
               </div>
             </div>
 
+            {/* Clubs & Sports Affiliations */}
+            <div className="pt-2 border-t border-[#d8cebe] space-y-3">
+              <span className="font-mono text-xs font-bold uppercase text-[#141c2b] block">
+                Clubs & Sports Affiliations (Optional)
+              </span>
+
+              {/* Major Club / Sport */}
+              <div>
+                <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
+                  Major Club / Sport
+                </label>
+                <select
+                  value={form.major_club || ""}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setForm((prev) => ({
+                      ...prev,
+                      major_club: val,
+                      major_sport: val === "Sports" ? prev.major_sport : undefined,
+                      minor_sport: val === "Sports" ? prev.minor_sport : undefined,
+                      minor_club: val !== "Sports" && prev.minor_club === val ? undefined : prev.minor_club,
+                    }))
+                  }}
+                  className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none cursor-pointer"
+                >
+                  <option value="">-- None / Select Major Club --</option>
+                  {MAJOR_CLUBS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                {form.major_club === "Sports" && (
+                  <input
+                    type="text"
+                    value={form.major_sport || ""}
+                    onChange={(e) => handleField("major_sport", e.target.value)}
+                    placeholder="Specify your major sport (e.g. Football, Basketball)"
+                    className="w-full mt-2 px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none"
+                  />
+                )}
+              </div>
+
+              {/* Minor Field: Minor Sport (if Sports) OR Minor Club (if regular club) */}
+              {form.major_club === "Sports" ? (
+                <div>
+                  <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
+                    Minor Sport
+                  </label>
+                  <input
+                    type="text"
+                    value={form.minor_sport || ""}
+                    onChange={(e) => handleField("minor_sport", e.target.value)}
+                    placeholder="e.g. Badminton, Table Tennis, Swimming (optional)"
+                    className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
+                    Minor Club
+                  </label>
+                  <select
+                    value={form.minor_club || ""}
+                    onChange={(e) => handleField("minor_club", e.target.value)}
+                    className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- None / Select Minor Club --</option>
+                    {REGULAR_CLUBS.filter((c) => c !== form.major_club).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Community Club */}
+              <div>
+                <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
+                  Community Club
+                </label>
+                <select
+                  value={form.community_club || ""}
+                  onChange={(e) => handleField("community_club", e.target.value)}
+                  className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none cursor-pointer"
+                >
+                  <option value="">-- None / Select Community Club --</option>
+                  {COMMUNITY_CLUBS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Social Links */}
             <div className="pt-2 border-t border-[#d8cebe] space-y-3">
               <span className="font-mono text-xs font-bold uppercase text-[#141c2b] block">
@@ -340,10 +411,10 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
             type="submit"
             form="edit-profile-form"
             disabled={saving}
-            className="primary-action text-xs font-mono"
+            className="primary-action text-xs font-mono cursor-pointer"
             style={{ padding: "0.55rem 1.4rem" }}
           >
-            {saving ? (uploadProgress || "Saving...") : "Save Student Badge →"}
+            {saving ? "Saving..." : "Save Profile →"}
           </button>
         </div>
       </div>

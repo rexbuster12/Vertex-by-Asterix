@@ -1,77 +1,57 @@
-# React + TypeScript + Vite
+# VERTEX // Connect and Interact
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**VERTEX** is the modern, editorial-style campus networking and student communities platform built for **BML Munjal University (BMU)**. It connects students across cohorts, departments, clubs, and sports with real-time bulletins and member moderation.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## ✨ Features
 
-## React Compiler
+- 🏛️ **Student Communities**: Discover and launch student-run clubs, build cohorts, and community initiatives with WhatsApp group integration.
+- 📣 **Community Announcements**: Community founders and co-leaders can broadcast announcements with live 👍 / 👎 reactions.
+- 🔍 **Student Directory**: Multi-attribute filtering across programs, batches, major clubs, minor clubs, sports, and community clubs (`NSS BMU`, `SAVERA`, `YRC`).
+- 🛡️ **Campus Security & Moderation**: Co-Leader assignment, disruptive member moderation, and user blocking.
+- 🎓 **Official BMU Authentication**: Gated student access requiring official university email credentials (`@bmu.edu.in`) with OTP password recovery.
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+---
 
-Note: This will impact Vite dev & build performances.
+## 🛠️ Tech Stack
 
-## Expanding the ESLint configuration
+- **Framework**: React 19, TypeScript, Vite
+- **Styling**: Tailwind CSS v4, Vanilla CSS Design System (Neo-Brutalist & Editorial)
+- **Database & Auth**: Supabase (PostgreSQL, Row Level Security, Storage Buckets)
+- **Routing**: React Router v8
+- **Icons**: Lucide React
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+---
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🚀 Getting Started
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/your-username/vertex-auth-form.git
+cd vertex-auth-form
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env` and fill in your Supabase credentials:
+```env
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key-here
 ```
+
+### 3. Run Locally
+```bash
+npm run dev
+```
+
+### 4. Build for Production
+```bash
+npm run build
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

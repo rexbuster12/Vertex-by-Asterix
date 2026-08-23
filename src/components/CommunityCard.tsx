@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router"
+import { WhatsAppIcon, InstagramIcon } from "./Icons"
 
 export type CommunityCardProps = {
   id?: string | number
@@ -7,30 +8,23 @@ export type CommunityCardProps = {
   members?: number
   members_count?: number
   description?: string
-  tags?: string[] | string
   whatsapp_link?: string
   instagram_link?: string
   image?: string
+  isPreview?: boolean
 }
 
-const FALLBACK_CAMPUS_PHOTOS = [
-  "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1517486800579-88f1f1d0d2a6?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1522204523234-8729aa6e3d5f?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=900&q=80",
-]
+const DEFAULT_CAMPUS_BANNER = "/default-banner.jpg"
 
 function CommunityCard({
   name,
   members = 1,
   members_count,
   description = "A campus community for students to collaborate, share ideas, and build together.",
-  tags,
   whatsapp_link,
   instagram_link,
   image,
+  isPreview = false,
 }: CommunityCardProps) {
   const initialMembers = members_count ?? members ?? 1
   const [joined, setJoined] = useState(false)
@@ -46,106 +40,113 @@ function CommunityCard({
     }
   }
 
-  const normalizedTags: string[] = Array.isArray(tags)
-    ? tags
-    : typeof tags === "string"
-      ? tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean)
-      : []
-
   const initials =
     name
       .split(" ")
       .slice(0, 2)
       .map((w) => w[0])
       .join("")
-      .toUpperCase() || "VX"
+      .toUpperCase() || "CM"
 
-  // Pick deterministic fallback photo based on name
-  const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  const photoUrl = image || FALLBACK_CAMPUS_PHOTOS[hash % FALLBACK_CAMPUS_PHOTOS.length]
-
-  const primaryTag = normalizedTags[0] ?? "campus"
-  const mediaStyle = {
-    backgroundImage: `url(${photoUrl})`,
-  }
+  const photoUrl = image || DEFAULT_CAMPUS_BANNER
 
   const hasSocialLinks = !!(whatsapp_link || instagram_link)
 
   return (
-    <article className="community-card">
-      <div className="community-card__media" style={mediaStyle}>
-        <span className="community-card__pill">#{primaryTag}</span>
-        <span className="community-card__stamp" title={name}>{initials}</span>
+    <article className="flex flex-col h-full bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg overflow-hidden shadow-[5px_5px_0px_#141c2b] transition-all hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[7px_7px_0px_#141c2b]">
+      {/* Prominent High-Visibility Image Banner */}
+      <div
+        className="relative w-full h-48 sm:h-52 bg-cover bg-center border-b-2 border-[#141c2b]"
+        style={{ backgroundImage: `url(${photoUrl})` }}
+      >
+        <span className="absolute top-3 left-3 px-2.5 py-1 bg-[#141c2b] text-white font-serif font-black text-xs border border-white/20 rounded-xs shadow-[2px_2px_0px_#141c2b]">
+          {initials}
+        </span>
       </div>
 
-      <div className="community-card__body">
-        <div className="community-card__meta">
-          <span className="status">{memberCount} active</span>
-          <span>{memberCount === 1 ? "1 member" : `${memberCount} members`}</span>
+      {/* Community Card Body */}
+      <div className="flex flex-col flex-1 p-5 space-y-3">
+        <div className="flex items-center justify-between font-mono text-xs font-bold text-[#545e6d] uppercase tracking-wider">
+          <span className="text-[#141c2b] flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#25D366] inline-block" />
+            {memberCount} Active
+          </span>
+          <span>{memberCount === 1 ? "1 Member" : `${memberCount} Members`}</span>
         </div>
 
-        <h3 className="community-card__title">
-          <Link to={`/communities/${encodeURIComponent(name)}`}>{name}</Link>
+        <h3 className="font-serif text-xl sm:text-2xl font-black text-[#141c2b] leading-snug">
+          {isPreview ? (
+            <span>{name}</span>
+          ) : (
+            <Link
+              to={`/communities/${encodeURIComponent(name)}`}
+              className="hover:text-[#d84c23] transition-colors"
+            >
+              {name}
+            </Link>
+          )}
         </h3>
-        <p className="community-card__description">{description}</p>
 
-        {normalizedTags.length > 0 && (
-          <div className="community-card__tags">
-            {normalizedTags.slice(0, 4).map((tag, idx) => (
-              <span key={`${tag}-${idx}`} className="community-card__tag">
-                #{tag}
-              </span>
-            ))}
+        <p className="text-xs text-[#545e6d] leading-relaxed flex-1 line-clamp-3">
+          {description}
+        </p>
+
+        {/* Action Row - Hidden in preview mode */}
+        {!isPreview ? (
+          <div className="pt-3 border-t-2 border-[#d8cebe] flex items-center justify-between gap-2 mt-auto">
+            <div className="flex items-center gap-2">
+              <Link
+                to={`/communities/${encodeURIComponent(name)}`}
+                className="font-mono text-xs font-bold uppercase px-3 py-1.5 bg-[#141c2b] text-white rounded-xs border-2 border-[#141c2b] shadow-[2px_2px_0px_#d84c23] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-transform"
+              >
+                View Community
+              </Link>
+              <button
+                type="button"
+                onClick={handleToggleJoin}
+                className={`font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-2 border-[#141c2b] cursor-pointer transition-colors ${
+                  joined
+                    ? "bg-[#eae2d5] text-[#141c2b] shadow-[1px_1px_0px_#141c2b]"
+                    : "bg-[#faf7f2] text-[#141c2b] shadow-[2px_2px_0px_#141c2b] hover:bg-white"
+                }`}
+              >
+                {joined ? "Joined ✓" : "+ Join"}
+              </button>
+            </div>
+
+            {hasSocialLinks && (
+              <div className="flex items-center gap-1.5">
+                {whatsapp_link && (
+                  <a
+                    href={whatsapp_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 bg-[#25D366] text-white border-1.5 border-[#141c2b] rounded-xs shadow-[1px_1px_0px_#141c2b] hover:scale-105 transition-transform"
+                    title="Join WhatsApp Group"
+                  >
+                    <WhatsAppIcon className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                {instagram_link && (
+                  <a
+                    href={instagram_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 bg-gradient-to-r from-[#833ab4] to-[#fd1d1d] text-white border-1.5 border-[#141c2b] rounded-xs shadow-[1px_1px_0px_#141c2b] hover:scale-105 transition-transform"
+                    title="Visit Instagram Profile"
+                  >
+                    <InstagramIcon className="w-3.5 h-3.5" />
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="pt-2 border-t border-[#d8cebe] flex items-center justify-between font-mono text-[10px] text-[#8892a0]">
+            <span className="text-[#d84c23] font-bold">● LIVE CARD PREVIEW</span>
+            <span>VERTEX NOTICEBOARD</span>
           </div>
         )}
-
-        <div className="community-card__actions">
-          <Link
-            to={`/communities/${encodeURIComponent(name)}`}
-            className="community-card__cta"
-          >
-            View circle
-          </Link>
-          <button
-            type="button"
-            onClick={handleToggleJoin}
-            className={`community-card__cta ${joined ? "is-joined" : ""}`}
-          >
-            {joined ? "Joined ✓" : "+ Join Club"}
-          </button>
-
-          {hasSocialLinks && (
-            <div className="community-card__social">
-              {whatsapp_link && (
-                <a
-                  href={whatsapp_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="social-pill"
-                  title="Join WhatsApp group"
-                >
-                  WA ↗
-                </a>
-              )}
-              {instagram_link && (
-                <a
-                  href={instagram_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="social-pill"
-                  title="View Instagram profile"
-                >
-                  IG ↗
-                </a>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </article>
   )
