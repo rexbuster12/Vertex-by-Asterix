@@ -369,11 +369,38 @@ export async function fetchCommunitiesFromDb() {
     .select("*")
     .order("created_at", { ascending: false })
 
-  if (error) {
+  if (error || !data) {
     console.warn("Supabase fetch communities error:", error)
     return null
   }
-  return data
+
+  // Fetch creator profiles to attach created_by_name
+  const creatorIds = data.map((c: any) => c.created_by).filter((id: any) => id && isUUID(id))
+  const profileMap = new Map<string, string>()
+  if (creatorIds.length > 0) {
+    try {
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in("id", creatorIds)
+      if (profs) {
+        profs.forEach((p) => profileMap.set(p.id, p.display_name))
+      }
+    } catch (e) {
+      console.warn("Could not fetch creator profile names:", e)
+    }
+  }
+
+  return data.map((c: any) => {
+    const creatorName = c.created_by ? profileMap.get(c.created_by) || "" : ""
+    return {
+      ...c,
+      created_by_name: creatorName,
+      created_by: c.created_by
+        ? { id: c.created_by, name: creatorName }
+        : undefined,
+    }
+  })
 }
 
 export async function createCommunityInDb(comm: SupabaseCommunity) {
@@ -646,12 +673,40 @@ export async function joinCommunityInDb(
       }
     }
 
+    // Resolve user's profile UUID in Supabase
+    const profile = getActiveProfile()
+    let memberUserId: string | null = null
+    if (user?.id && isUUID(user.id)) {
+      memberUserId = user.id
+    } else {
+      try {
+        if (profile?.display_name) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("id")
+            .ilike("display_name", profile.display_name.trim())
+            .maybeSingle()
+          if (prof?.id) memberUserId = prof.id
+        }
+        if (!memberUserId && user?.email) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", user.email.trim())
+            .maybeSingle()
+          if (prof?.id) memberUserId = prof.id
+        }
+      } catch (e) {
+        console.warn("Could not resolve profile ID for join:", e)
+      }
+    }
+
     // Insert into community_members table
-    if (isUUID(commId) && user?.id) {
+    if (isUUID(commId) && memberUserId) {
       await supabase.from("community_members").upsert(
         {
           community_id: commId,
-          user_id: user.id,
+          user_id: memberUserId,
           role: "member",
         },
         { onConflict: "community_id,user_id" }
@@ -708,13 +763,40 @@ export async function leaveCommunityInDb(
       }
     }
 
+    const profile = getActiveProfile()
+    let memberUserId: string | null = null
+    if (user?.id && isUUID(user.id)) {
+      memberUserId = user.id
+    } else {
+      try {
+        if (profile?.display_name) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("id")
+            .ilike("display_name", profile.display_name.trim())
+            .maybeSingle()
+          if (prof?.id) memberUserId = prof.id
+        }
+        if (!memberUserId && user?.email) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", user.email.trim())
+            .maybeSingle()
+          if (prof?.id) memberUserId = prof.id
+        }
+      } catch (e) {
+        console.warn("Could not resolve profile ID for leave:", e)
+      }
+    }
+
     // Delete from community_members table
-    if (isUUID(commId) && user?.id) {
+    if (isUUID(commId) && memberUserId) {
       await supabase
         .from("community_members")
         .delete()
         .eq("community_id", commId)
-        .eq("user_id", user.id)
+        .eq("user_id", memberUserId)
     }
 
     // Update members_count in communities table
@@ -748,6 +830,7 @@ export async function leaveCommunityInDb(
 
 export async function fetchUserJoinedCommunityNames(): Promise<string[]> {
   const user = getCachedUser()
+  const profile = getActiveProfile()
   const names = new Set<string>()
 
   try {
@@ -758,12 +841,36 @@ export async function fetchUserJoinedCommunityNames(): Promise<string[]> {
     }
   } catch { }
 
-  if (user?.id) {
+  let currentProfileId: string | null = null
+  if (user?.id && isUUID(user.id)) {
+    currentProfileId = user.id
+  } else {
+    try {
+      if (profile?.display_name) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .ilike("display_name", profile.display_name.trim())
+          .maybeSingle()
+        if (prof?.id) currentProfileId = prof.id
+      }
+      if (!currentProfileId && user?.email) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("email", user.email.trim())
+          .maybeSingle()
+        if (prof?.id) currentProfileId = prof.id
+      }
+    } catch { }
+  }
+
+  if (currentProfileId) {
     try {
       const { data: memberRows } = await supabase
         .from("community_members")
         .select("community_id, communities(name)")
-        .eq("user_id", user.id)
+        .eq("user_id", currentProfileId)
 
       if (memberRows) {
         for (const row of memberRows as any[]) {
@@ -813,13 +920,38 @@ export async function fetchUserHeadCommunityNames(): Promise<string[]> {
     }
   } catch { }
 
+  // Resolve user's profile UUID in Supabase
+  let currentProfileId: string | null = null
+  if (user?.id && isUUID(user.id)) {
+    currentProfileId = user.id
+  } else {
+    try {
+      if (profile?.display_name) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .ilike("display_name", profile.display_name.trim())
+          .maybeSingle()
+        if (prof?.id) currentProfileId = prof.id
+      }
+      if (!currentProfileId && user?.email) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("email", user.email.trim())
+          .maybeSingle()
+        if (prof?.id) currentProfileId = prof.id
+      }
+    } catch { }
+  }
+
   // 3. Check Supabase community_members table for role in ('founder', 'head')
-  if (user?.id) {
+  if (currentProfileId) {
     try {
       const { data: headRows } = await supabase
         .from("community_members")
         .select("community_id, communities(name)")
-        .eq("user_id", user.id)
+        .eq("user_id", currentProfileId)
         .in("role", ["founder", "head"])
 
       if (headRows) {
@@ -833,12 +965,12 @@ export async function fetchUserHeadCommunityNames(): Promise<string[]> {
       console.warn("Could not fetch user head communities from members:", e)
     }
 
-    // 4. Check Supabase communities table for created_by == user.id
+    // 4. Check Supabase communities table for created_by == currentProfileId
     try {
       const { data: createdComms } = await supabase
         .from("communities")
         .select("name")
-        .eq("created_by", user.id)
+        .eq("created_by", currentProfileId)
 
       if (createdComms) {
         for (const c of createdComms) {

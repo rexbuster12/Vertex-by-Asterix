@@ -1,10 +1,20 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Link, useSearchParams, useNavigate } from "react-router"
-import { LogOut, Users, ExternalLink, QrCode, Copy, Check, UserPlus, Share2, Flag } from "lucide-react"
+import { LogOut, Users, ExternalLink, QrCode, Copy, Check, UserPlus, Share2, Flag, UserCheck, Clock } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
 import ReportModal from "../components/ReportModal"
-import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
+import {
+  getActiveProfile,
+  setActiveProfile,
+  getActiveUser,
+  getConnectionStatus,
+  sendConnectionRequest,
+  acceptConnectionRequest,
+  declineConnectionRequest,
+  disconnectUsers,
+  getConnectedStudentNames,
+} from "../lib/tempStore"
 import { saveStudentProfile, signOutStudent, fetchCommunitiesFromDb } from "../lib/supabaseService"
 import { getStoredCommunities } from "../lib/mockStore"
 import { addNotification } from "../lib/notificationStore"
@@ -19,7 +29,7 @@ function Profile() {
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [joinedCommunities, setJoinedCommunities] = useState<any[]>([])
   const [copied, setCopied] = useState(false)
-  const [isPeerConnected, setIsPeerConnected] = useState(false)
+  const [connectionVersion, setConnectionVersion] = useState(0)
   const [isReportOpen, setIsReportOpen] = useState(false)
 
   const active = getActiveProfile()
@@ -37,7 +47,6 @@ function Profile() {
             ) {
               setProfile(parsed)
               setIsPreviewing(true)
-              checkConnectedStatus(parsed.username || parsed.display_name)
               return
             }
           }
@@ -53,7 +62,6 @@ function Profile() {
           if (remote) {
             setProfile(remote)
             setIsPreviewing(true)
-            checkConnectedStatus(remote.username || remote.display_name || remote.id)
             return
           }
         }
@@ -68,18 +76,6 @@ function Profile() {
         }
       } catch {
         setProfile(null)
-      }
-    }
-
-    function checkConnectedStatus(idOrName: string) {
-      try {
-        const saved = localStorage.getItem("vertex_connected_ids")
-        if (saved) {
-          const parsed = JSON.parse(saved)
-          setIsPeerConnected(!!parsed[idOrName])
-        }
-      } catch {
-        setIsPeerConnected(false)
       }
     }
 
@@ -153,31 +149,51 @@ function Profile() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleTogglePeerConnect = () => {
-    if (!profile) return
-    const idOrName = profile.username || profile.display_name
-    const nextState = !isPeerConnected
-    setIsPeerConnected(nextState)
-
-    try {
-      const saved = localStorage.getItem("vertex_connected_ids")
-      const current = saved ? JSON.parse(saved) : {}
-      current[idOrName] = nextState
-      localStorage.setItem("vertex_connected_ids", JSON.stringify(current))
-    } catch (e) {
-      console.warn("Connection store notice:", e)
-    }
-
-    if (nextState) {
-      addNotification({
-        type: "connection_received",
-        title: `Connected with ${profile.display_name}`,
-        message: `You connected with ${profile.display_name} on Vertex.`,
-        linkUrl: `/students`,
-        sourceName: profile.display_name,
-      })
-    }
+  const handleSendConnectRequest = () => {
+    if (!profile || !active?.display_name) return
+    sendConnectionRequest(active.display_name, profile.display_name, {
+      branch: active.branch,
+      batch: active.batch,
+      avatar: active.avatar_url,
+    })
+    setConnectionVersion((v) => v + 1)
+    addNotification({
+      type: "connection_received",
+      title: `Connection Request Sent`,
+      message: `Sent a connection request to ${profile.display_name}.`,
+      linkUrl: `/students`,
+      sourceName: profile.display_name,
+    })
   }
+
+  const handleAcceptRequest = (requestId: string) => {
+    if (!profile) return
+    acceptConnectionRequest(requestId)
+    setConnectionVersion((v) => v + 1)
+    addNotification({
+      type: "connection_received",
+      title: `Connected with ${profile.display_name}`,
+      message: `You accepted ${profile.display_name}'s connection request!`,
+      linkUrl: `/students`,
+      sourceName: profile.display_name,
+    })
+  }
+
+  const handleDeclineRequest = (requestId: string) => {
+    declineConnectionRequest(requestId)
+    setConnectionVersion((v) => v + 1)
+  }
+
+  const handleDisconnect = () => {
+    if (!profile || !active?.display_name) return
+    disconnectUsers(active.display_name, profile.display_name)
+    setConnectionVersion((v) => v + 1)
+  }
+
+  const connInfo = useMemo(() => {
+    if (!profile || !active?.display_name) return { status: "none" as const }
+    return getConnectionStatus(active.display_name, profile.display_name)
+  }, [profile, active?.display_name, connectionVersion])
 
   const initials =
     (profile?.display_name || "")
@@ -218,49 +234,39 @@ function Profile() {
       <div className="editorial-shell space-y-6">
         {/* ── STUDENT PROFILE HEADER ─────────── */}
         <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 sm:p-8 shadow-[6px_6px_0px_#141c2b] space-y-6">
-          <div className="flex items-center justify-between border-b-2 border-[#141c2b] pb-3">
-            <span className="font-mono text-xs font-bold text-[#d84c23] uppercase tracking-wider">
-              {isPreviewing
-                ? `STUDENT DIRECTORY PROFILE // ${profile.display_name.toUpperCase()}`
-                : "VERTEX STUDENT IDENTIFICATION // PROFILE"}
-            </span>
-            <span className="font-mono text-[11px] font-bold text-[#141c2b] bg-[#eae2d5] px-2 py-0.5 border border-[#141c2b]">
-              VERIFIED CAMPUS STUDENT
-            </span>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            {/* Photo */}
-            <div className="relative flex-shrink-0">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 pb-6 border-b-2 border-[#141c2b]">
+            {/* Avatar Photo or Initials */}
+            <div className="flex items-center gap-5">
               {profile.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt={profile.display_name}
-                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-sm object-cover border-2 border-[#141c2b] shadow-[3px_3px_0px_#141c2b]"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-xs object-cover border-2 border-[#141c2b] shadow-[3px_3px_0px_#141c2b]"
                 />
               ) : (
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-sm bg-[#141c2b] text-[#faf7f2] font-serif font-black flex items-center justify-center text-3xl border-2 border-[#141c2b] shadow-[3px_3px_0px_#141c2b]">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xs bg-[#141c2b] text-[#ffffff] font-serif font-black flex items-center justify-center text-3xl sm:text-4xl border-2 border-[#141c2b] shadow-[3px_3px_0px_#141c2b]">
                   {initials}
                 </div>
               )}
-            </div>
-
-            {/* Student Info */}
-            <div className="space-y-2 flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-3xl sm:text-4xl font-extrabold text-[#141c2b] tracking-tight">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs font-bold uppercase text-[#d84c23]">
+                    {profile.branch || "BML Munjal University"}
+                  </span>
+                  {profile.username && (
+                    <span className="font-mono text-[11px] font-bold text-[#141c2b] bg-[#eae2d5] px-2 py-0.5 border border-[#141c2b] rounded-2xs">
+                      @{profile.username}
+                    </span>
+                  )}
+                  {isPreviewing && (
+                    <span className="font-mono text-[10px] font-bold uppercase text-[#141c2b] bg-[#e0deda] px-2 py-0.5 border border-[#141c2b] rounded-2xs">
+                      Peer View
+                    </span>
+                  )}
+                </div>
+                <h1 className="font-serif text-2xl sm:text-4xl font-black text-[#141c2b]">
                   {profile.display_name}
                 </h1>
-                {profile.username && (
-                  <span className="font-mono text-xs font-bold text-[#d84c23] bg-[#fbe8e6] border border-[#d84c23] px-2 py-0.5 rounded-xs">
-                    @{profile.username}
-                  </span>
-                )}
-                {profile.branch && (
-                  <span className="font-mono text-xs font-bold px-2.5 py-0.5 bg-[#141c2b] text-white rounded-xs">
-                    {profile.branch}
-                  </span>
-                )}
                 {profile.batch && (
                   <span className="font-mono text-xs font-bold px-2 py-0.5 bg-[#eae2d5] text-[#141c2b] border border-[#141c2b] rounded-xs">
                     {profile.batch}
@@ -344,18 +350,48 @@ function Profile() {
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2.5 self-start sm:self-center">
-                <button
-                  onClick={handleTogglePeerConnect}
-                  className={`text-xs font-mono font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm border-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_#141c2b] ${
-                    isPeerConnected
-                      ? "bg-[#22c55e] text-white border-[#141c2b]"
-                      : "bg-[#d84c23] hover:bg-[#b83d1b] text-white border-[#141c2b]"
-                  }`}
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>{isPeerConnected ? "✓ Connected" : "Connect +"}</span>
-                </button>
+              <div className="flex flex-col gap-2 self-start sm:self-center">
+                {connInfo.status === "connected" ? (
+                  <button
+                    onClick={handleDisconnect}
+                    className="text-xs font-mono font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm border-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_#141c2b] bg-[#22c55e] text-white border-[#141c2b] hover:bg-[#d84c23]"
+                    title="Connected! Click to disconnect"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>✓ Connected</span>
+                  </button>
+                ) : connInfo.status === "request_received" ? (
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      onClick={() => handleAcceptRequest(connInfo.requestId!)}
+                      className="text-xs font-mono font-bold uppercase tracking-wider px-3 py-2 rounded-sm border-2 border-[#141c2b] bg-[#141c2b] text-white hover:bg-[#22c55e] hover:text-[#141c2b] shadow-[2px_2px_0px_#141c2b] cursor-pointer"
+                    >
+                      Accept Request ✓
+                    </button>
+                    <button
+                      onClick={() => handleDeclineRequest(connInfo.requestId!)}
+                      className="text-xs font-mono font-bold uppercase tracking-wider px-3 py-1.5 rounded-sm border-2 border-[#d84c23] bg-[#fbe8e6] text-[#d84c23] hover:bg-[#d84c23] hover:text-white cursor-pointer"
+                    >
+                      Decline ✕
+                    </button>
+                  </div>
+                ) : connInfo.status === "request_sent" ? (
+                  <button
+                    disabled
+                    className="text-xs font-mono font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm border-2 border-[#141c2b] bg-[#eae2d5] text-[#545e6d] shadow-[2px_2px_0px_#141c2b] cursor-default flex items-center justify-center gap-1.5"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Requested ⏳</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSendConnectRequest}
+                    className="text-xs font-mono font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm border-2 border-[#141c2b] bg-[#d84c23] hover:bg-[#b83d1b] text-white shadow-[2px_2px_0px_#141c2b] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Connect +</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setIsReportOpen(true)}
@@ -384,7 +420,9 @@ function Profile() {
             </div>
             <div>
               <p className="font-serif text-2xl font-black text-[#d84c23]">
-                {isPreviewing ? (isPeerConnected ? 1 : 0) : 0}
+                {isPreviewing
+                  ? (connInfo.status === "connected" ? 1 : 0)
+                  : getConnectedStudentNames(active?.display_name || "").length}
               </p>
               <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Campus Connections</p>
             </div>

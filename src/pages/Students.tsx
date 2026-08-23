@@ -1,11 +1,25 @@
 import { useState, useMemo, useEffect } from "react"
 import { Link, useNavigate } from "react-router"
-import { getActiveProfile, blockUser, unblockUser, isUserBlocked, getBlockedUsers } from "../lib/tempStore"
+import {
+  getActiveProfile,
+  blockUser,
+  unblockUser,
+  isUserBlocked,
+  getBlockedUsers,
+  sendConnectionRequest,
+  acceptConnectionRequest,
+  declineConnectionRequest,
+  getConnectionStatus,
+  getIncomingConnectionRequests,
+  areUsersConnected,
+  disconnectUsers,
+  type ConnectionRequest,
+} from "../lib/tempStore"
 import { addNotification } from "../lib/notificationStore"
 import { fetchAllProfiles } from "../lib/supabaseService"
 import { COURSE_OPTIONS } from "./ProfileCreatePage"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS } from "../lib/clubsData"
-import { Ban, CheckSquare, Square, Flag } from "lucide-react"
+import { Ban, CheckSquare, Square, Flag, UserCheck, UserPlus, Clock } from "lucide-react"
 import ReportModal from "../components/ReportModal"
 
 export type StudentProfile = {
@@ -61,19 +75,19 @@ function Students() {
   const [selectedMajorClub, setSelectedMajorClub] = useState("All Major Clubs & Sports")
   const [selectedCommunityClub, setSelectedCommunityClub] = useState("All Community Clubs")
   const [sportQuery, setSportQuery] = useState("")
-  const [connectedIds, setConnectedIds] = useState<Record<string | number, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem("vertex_connected_ids")
-      return saved ? JSON.parse(saved) : {}
-    } catch {
-      return {}
-    }
-  })
+  const [connectionVersion, setConnectionVersion] = useState(0)
+  const [incomingRequests, setIncomingRequests] = useState<ConnectionRequest[]>([])
   const [, setBlockedUsers] = useState<string[]>(() => getBlockedUsers())
   const [reportTarget, setReportTarget] = useState<{ id: string; name: string } | null>(null)
   const [remoteProfiles, setRemoteProfiles] = useState<StudentProfile[]>([])
 
   const active = getActiveProfile()
+
+  useEffect(() => {
+    if (active?.display_name) {
+      setIncomingRequests(getIncomingConnectionRequests(active.display_name))
+    }
+  }, [active?.display_name, connectionVersion])
 
   useEffect(() => {
     async function loadStudents() {
@@ -151,31 +165,44 @@ function Students() {
     navigate(`/profile?preview=${encodeURIComponent(student.username || student.name)}`)
   }
 
-  const toggleConnect = (id: string | number, studentName: string) => {
-    if (isUserBlocked(studentName)) return
+  const handleSendConnectRequest = (student: StudentProfile) => {
+    if (!active?.display_name || isUserBlocked(student.name)) return
+    sendConnectionRequest(active.display_name, student.name, {
+      branch: active.branch,
+      batch: active.batch,
+      avatar: active.avatar_url,
+    })
+    setConnectionVersion((v) => v + 1)
+    addNotification({
+      type: "connection_received",
+      title: `Connection Request Sent`,
+      message: `Sent a connection request to ${student.name}.`,
+      linkUrl: `/students`,
+      sourceName: student.name,
+    })
+  }
 
-    const isNowConnected = !connectedIds[id]
-    const updated = {
-      ...connectedIds,
-      [id]: isNowConnected,
-    }
-    setConnectedIds(updated)
-    try {
-      localStorage.setItem("vertex_connected_ids", JSON.stringify(updated))
-    } catch (e) {
-      console.warn("Storage notice:", e)
-    }
+  const handleAcceptRequest = (requestId: string, fromName: string) => {
+    acceptConnectionRequest(requestId)
+    setConnectionVersion((v) => v + 1)
+    addNotification({
+      type: "connection_received",
+      title: `Connected with ${fromName}`,
+      message: `You accepted ${fromName}'s connection request. You are now connected on Vertex!`,
+      linkUrl: `/students`,
+      sourceName: fromName,
+    })
+  }
 
-    if (isNowConnected) {
-      const targetStudent = studentList.find((s) => s.id === id)
-      addNotification({
-        type: "connection_received",
-        title: `Connected with ${targetStudent?.name || "Fellow Student"}`,
-        message: `You are now connected with ${targetStudent?.name || "fellow student"} on Vertex.`,
-        linkUrl: `/students`,
-        sourceName: targetStudent?.name,
-      })
-    }
+  const handleDeclineRequest = (requestId: string) => {
+    declineConnectionRequest(requestId)
+    setConnectionVersion((v) => v + 1)
+  }
+
+  const handleDisconnect = (studentName: string) => {
+    if (!active?.display_name) return
+    disconnectUsers(active.display_name, studentName)
+    setConnectionVersion((v) => v + 1)
   }
 
   const toggleBlockStudent = (studentName: string) => {
@@ -186,23 +213,22 @@ function Students() {
     } else {
       blockUser(studentName)
       setBlockedUsers(getBlockedUsers())
-      const target = studentList.find((s) => s.name === studentName)
-      if (target) {
-        const updated = { ...connectedIds, [target.id]: false }
-        setConnectedIds(updated)
-        localStorage.setItem("vertex_connected_ids", JSON.stringify(updated))
+      if (active?.display_name) {
+        disconnectUsers(active.display_name, studentName)
       }
     }
+    setConnectionVersion((v) => v + 1)
   }
 
   const totalCount = studentList.length
   const connectedCount = useMemo(() => {
-    return studentList.filter((s) => !!connectedIds[s.id]).length
-  }, [studentList, connectedIds])
+    if (!active?.display_name) return 0
+    return studentList.filter((s) => areUsersConnected(active.display_name, s.name)).length
+  }, [studentList, active?.display_name, connectionVersion])
 
   const filteredStudents = useMemo(() => {
     return studentList.filter((student) => {
-      if (connectionFilter === "connected" && !connectedIds[student.id]) {
+      if (connectionFilter === "connected" && active?.display_name && !areUsersConnected(active.display_name, student.name)) {
         return false
       }
 
@@ -242,7 +268,7 @@ function Students() {
 
       return matchSearch && matchBranch && matchStartYear && matchEndYear && matchMajorClub && matchCommunityClub && matchSport
     })
-  }, [studentList, searchQuery, selectedBranch, selectedStartYear, selectedEndYear, selectedMajorClub, selectedCommunityClub, sportQuery, connectionFilter, connectedIds])
+  }, [studentList, searchQuery, selectedBranch, selectedStartYear, selectedEndYear, selectedMajorClub, selectedCommunityClub, sportQuery, connectionFilter, connectionVersion, active?.display_name])
 
   return (
     <div className="editorial-shell space-y-6">
@@ -419,11 +445,76 @@ function Students() {
         </div>
       </div>
 
+      {/* ── INCOMING CONNECTION REQUESTS BANNER ── */}
+      {incomingRequests.length > 0 && (
+        <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-5 shadow-[5px_5px_0px_#d84c23] space-y-3.5 animate-fadeIn">
+          <div className="flex items-center justify-between border-b border-[#d8cebe] pb-2">
+            <span className="font-mono text-xs font-bold uppercase text-[#d84c23] flex items-center gap-1.5 tracking-wider">
+              <UserCheck className="w-4 h-4 text-[#d84c23]" />
+              Incoming Connect Requests ({incomingRequests.length})
+            </span>
+            <span className="font-mono text-[10px] text-[#545e6d]">
+              Review students who want to connect with your profile
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {incomingRequests.map((req) => (
+              <div
+                key={req.id}
+                className="flex items-center justify-between p-3 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] gap-2"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {req.fromAvatar ? (
+                    <img
+                      src={req.fromAvatar}
+                      alt={req.fromName}
+                      className="w-10 h-10 rounded-xs object-cover border-1.5 border-[#141c2b] flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xs bg-[#141c2b] text-white font-serif font-black flex items-center justify-center text-xs flex-shrink-0 border-1.5 border-[#141c2b]">
+                      {req.fromName.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <h4 className="font-sans font-bold text-xs text-[#141c2b] truncate">
+                      {req.fromName}
+                    </h4>
+                    <p className="font-mono text-[10px] text-[#545e6d] truncate">
+                      {req.fromBranch || "BML Munjal University"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleAcceptRequest(req.id, req.fromName)}
+                    className="font-mono text-[10.5px] font-bold uppercase px-2.5 py-1 bg-[#141c2b] text-white rounded-2xs border border-[#141c2b] hover:bg-[#22c55e] hover:text-[#141c2b] transition-all cursor-pointer shadow-[1px_1px_0px_#141c2b]"
+                    title="Accept connection"
+                  >
+                    Accept ✓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeclineRequest(req.id)}
+                    className="font-mono text-[10.5px] font-bold uppercase px-2 py-1 bg-[#fbe8e6] text-[#d84c23] rounded-2xs border border-[#d84c23] hover:bg-[#d84c23] hover:text-white transition-all cursor-pointer"
+                    title="Decline request"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {filteredStudents.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredStudents.map((student) => {
             const isSelf = active && active.display_name.trim().toLowerCase() === student.name.trim().toLowerCase()
-            const isConnected = !!connectedIds[student.id]
+            const connInfo = getConnectionStatus(active?.display_name || "", student.name)
             const isBlocked = isUserBlocked(student.name)
             const initials = student.name
               .split(" ")
@@ -541,16 +632,54 @@ function Students() {
                         </button>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => toggleConnect(student.id, student.name)}
-                            className={`font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] transition-all cursor-pointer ${isConnected
-                                ? "bg-[#eae2d5] text-[#141c2b] shadow-[1px_1px_0px_#141c2b]"
-                                : "bg-[#141c2b] text-[#ffffff] shadow-[2px_2px_0px_#d84c23] hover:translate-x-[-1px] hover:translate-y-[-1px]"
-                              }`}
-                          >
-                            {isConnected ? "Connected ✓" : "+ Connect"}
-                          </button>
+                          {connInfo.status === "connected" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDisconnect(student.name)}
+                              className="font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] bg-[#22c55e] text-white shadow-[1px_1px_0px_#141c2b] hover:bg-[#d84c23] transition-all cursor-pointer flex items-center gap-1"
+                              title="Connected! Click to disconnect"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                              <span>Connected ✓</span>
+                            </button>
+                          ) : connInfo.status === "request_received" ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptRequest(connInfo.requestId!, student.name)}
+                                className="font-mono text-[11px] font-bold uppercase px-2.5 py-1 rounded-xs border-1.5 border-[#141c2b] bg-[#141c2b] text-white shadow-[1px_1px_0px_#22c55e] hover:bg-[#22c55e] hover:text-[#141c2b] transition-all cursor-pointer"
+                              >
+                                Accept ✓
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeclineRequest(connInfo.requestId!)}
+                                className="font-mono text-[11px] font-bold uppercase px-2 py-1 rounded-xs border-1.5 border-[#d84c23] bg-[#fbe8e6] text-[#d84c23] hover:bg-[#d84c23] hover:text-white transition-all cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : connInfo.status === "request_sent" ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] bg-[#eae2d5] text-[#545e6d] shadow-[1px_1px_0px_#141c2b] cursor-default flex items-center gap-1"
+                              title="Request pending approval"
+                            >
+                              <Clock className="w-3 h-3" />
+                              <span>Requested ⏳</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSendConnectRequest(student)}
+                              className="font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] bg-[#141c2b] text-[#ffffff] shadow-[2px_2px_0px_#d84c23] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all cursor-pointer flex items-center gap-1"
+                            >
+                              <UserPlus className="w-3.5 h-3.5" />
+                              <span>+ Connect</span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => toggleBlockStudent(student.name)}

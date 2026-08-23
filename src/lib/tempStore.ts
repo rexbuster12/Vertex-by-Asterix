@@ -112,6 +112,196 @@ export function isUserBlocked(identifier: string): boolean {
   return inMemoryBlockedUsers.has(identifier.trim().toLowerCase())
 }
 
+// ── CONNECTION REQUESTS & TWO-WAY CONNECTIONS ────────────────────────────────
+
+export interface ConnectionRequest {
+  id: string
+  fromName: string
+  fromBranch?: string
+  fromBatch?: string
+  fromAvatar?: string
+  toName: string
+  status: "pending" | "accepted" | "declined"
+  createdAt: string
+}
+
+function loadAllConnectionRequests(): ConnectionRequest[] {
+  try {
+    const raw = localStorage.getItem("vertex_connection_requests_v2")
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveAllConnectionRequests(list: ConnectionRequest[]) {
+  try {
+    localStorage.setItem("vertex_connection_requests_v2", JSON.stringify(list))
+  } catch { }
+}
+
+function loadAllTwoWayConnections(): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem("vertex_two_way_connections_v2")
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveAllTwoWayConnections(map: Record<string, string[]>) {
+  try {
+    localStorage.setItem("vertex_two_way_connections_v2", JSON.stringify(map))
+  } catch { }
+}
+
+export function areUsersConnected(userA: string, userB: string): boolean {
+  if (!userA || !userB) return false
+  const keyA = userA.trim().toLowerCase()
+  const keyB = userB.trim().toLowerCase()
+  const map = loadAllTwoWayConnections()
+  const listA = map[keyA] || []
+  return listA.includes(keyB)
+}
+
+export type UserConnectionStatus = "connected" | "request_sent" | "request_received" | "none"
+
+export function getConnectionStatus(
+  currentUserName: string,
+  targetStudentName: string
+): { status: UserConnectionStatus; requestId?: string } {
+  if (!currentUserName || !targetStudentName) return { status: "none" }
+  if (currentUserName.trim().toLowerCase() === targetStudentName.trim().toLowerCase()) {
+    return { status: "none" }
+  }
+
+  if (areUsersConnected(currentUserName, targetStudentName)) {
+    return { status: "connected" }
+  }
+
+  const keyCurrent = currentUserName.trim().toLowerCase()
+  const keyTarget = targetStudentName.trim().toLowerCase()
+  const allRequests = loadAllConnectionRequests()
+
+  // 1. Check if target student sent request to current user
+  const incoming = allRequests.find(
+    (r) =>
+      r.status === "pending" &&
+      r.fromName.trim().toLowerCase() === keyTarget &&
+      r.toName.trim().toLowerCase() === keyCurrent
+  )
+  if (incoming) {
+    return { status: "request_received", requestId: incoming.id }
+  }
+
+  // 2. Check if current user sent request to target student
+  const outgoing = allRequests.find(
+    (r) =>
+      r.status === "pending" &&
+      r.fromName.trim().toLowerCase() === keyCurrent &&
+      r.toName.trim().toLowerCase() === keyTarget
+  )
+  if (outgoing) {
+    return { status: "request_sent", requestId: outgoing.id }
+  }
+
+  return { status: "none" }
+}
+
+export function getIncomingConnectionRequests(currentUserName: string): ConnectionRequest[] {
+  if (!currentUserName) return []
+  const keyCurrent = currentUserName.trim().toLowerCase()
+  const allRequests = loadAllConnectionRequests()
+  return allRequests.filter(
+    (r) => r.status === "pending" && r.toName.trim().toLowerCase() === keyCurrent
+  )
+}
+
+export function getConnectedStudentNames(currentUserName: string): string[] {
+  if (!currentUserName) return []
+  const keyCurrent = currentUserName.trim().toLowerCase()
+  const map = loadAllTwoWayConnections()
+  return map[keyCurrent] || []
+}
+
+export function sendConnectionRequest(
+  fromName: string,
+  toName: string,
+  fromInfo?: { branch?: string; batch?: string; avatar?: string }
+): ConnectionRequest {
+  const all = loadAllConnectionRequests()
+  const newReq: ConnectionRequest = {
+    id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    fromName: fromName.trim(),
+    fromBranch: fromInfo?.branch,
+    fromBatch: fromInfo?.batch,
+    fromAvatar: fromInfo?.avatar,
+    toName: toName.trim(),
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  }
+
+  const filtered = all.filter(
+    (r) =>
+      !(
+        r.fromName.trim().toLowerCase() === fromName.trim().toLowerCase() &&
+        r.toName.trim().toLowerCase() === toName.trim().toLowerCase()
+      )
+  )
+  saveAllConnectionRequests([newReq, ...filtered])
+  return newReq
+}
+
+export function acceptConnectionRequest(requestId: string): boolean {
+  const all = loadAllConnectionRequests()
+  const targetReq = all.find((r) => r.id === requestId)
+  if (!targetReq) return false
+
+  targetReq.status = "accepted"
+  saveAllConnectionRequests(all)
+
+  // Establish two-way connection
+  const keyA = targetReq.fromName.trim().toLowerCase()
+  const keyB = targetReq.toName.trim().toLowerCase()
+  const map = loadAllTwoWayConnections()
+
+  const listA = new Set(map[keyA] || [])
+  listA.add(keyB)
+  map[keyA] = Array.from(listA)
+
+  const listB = new Set(map[keyB] || [])
+  listB.add(keyA)
+  map[keyB] = Array.from(listB)
+
+  saveAllTwoWayConnections(map)
+  return true
+}
+
+export function declineConnectionRequest(requestId: string): boolean {
+  const all = loadAllConnectionRequests()
+  const targetReq = all.find((r) => r.id === requestId)
+  if (!targetReq) return false
+
+  targetReq.status = "declined"
+  saveAllConnectionRequests(all.filter((r) => r.id !== requestId))
+  return true
+}
+
+export function disconnectUsers(userA: string, userB: string) {
+  if (!userA || !userB) return
+  const keyA = userA.trim().toLowerCase()
+  const keyB = userB.trim().toLowerCase()
+  const map = loadAllTwoWayConnections()
+
+  if (map[keyA]) {
+    map[keyA] = map[keyA].filter((k) => k !== keyB)
+  }
+  if (map[keyB]) {
+    map[keyB] = map[keyB].filter((k) => k !== keyA)
+  }
+  saveAllTwoWayConnections(map)
+}
+
 // Clear any old saved profiles, emails, and mock communities from browser storage
 export function clearAllPersistentProfiles() {
   try {

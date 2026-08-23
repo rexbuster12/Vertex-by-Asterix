@@ -787,115 +787,189 @@ function CommunityDetail() {
 
           {/* Expandable Member Cards List */}
           {isMemberListOpen && (
-            <div className="pt-2 space-y-2.5 animate-fadeIn">
+            <div className="pt-2 space-y-3 animate-fadeIn">
               <p className="font-mono text-[11px] text-[#545e6d] pb-1">
-                Click any member card to view their student profile:
+                Click any student card to view their full profile:
               </p>
 
-              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
-                {community.members && community.members.length > 0 ? (
-                  community.members.map((member) => {
-                    const initials = member.name
-                      .split(" ")
-                      .map((w) => w[0])
-                      .join("")
-                      .toUpperCase()
-                      .slice(0, 2)
+              {(() => {
+                const allMembers = community.members || []
+                const leadershipMembers = allMembers.filter(
+                  (m) =>
+                    m.is_founder ||
+                    m.is_head ||
+                    m.role === "founder" ||
+                    m.role === "head" ||
+                    (community.created_by?.name &&
+                      m.name.trim().toLowerCase() === community.created_by.name.trim().toLowerCase())
+                )
+                const regularMembers = allMembers.filter(
+                  (m) => !leadershipMembers.some((lm) => lm.id === m.id || lm.name.toLowerCase() === m.name.toLowerCase())
+                )
 
-                    const isMemberFounder = Boolean(
-                      member.is_founder ||
-                      (community.created_by?.name &&
-                        member.name.trim().toLowerCase() === community.created_by.name.trim().toLowerCase())
-                    )
-                    const isMemberCoLeader = Boolean(member.role === "co-leader")
-                    const isMemberSelf = Boolean(
-                      activeProfile?.display_name &&
-                      member.name.trim().toLowerCase() === activeProfile.display_name.trim().toLowerCase()
-                    )
-
-                    return (
-                      <div
-                        key={member.id}
-                        onClick={() => handleMemberClick(member)}
-                        className="group flex items-center justify-between p-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] hover:bg-white hover:border-[#d84c23] transition-all cursor-pointer gap-2"
-                        title={`View ${member.name}'s profile`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {/* Member Photo or Initials */}
-                          {member.avatar_url ? (
-                            <img
-                              src={member.avatar_url}
-                              alt={member.name}
-                              className="w-10 h-10 rounded-xs object-cover border-1.5 border-[#141c2b] flex-shrink-0 shadow-[1px_1px_0px_#141c2b]"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-xs bg-[#141c2b] text-white font-serif font-black flex items-center justify-center text-xs flex-shrink-0 border-1.5 border-[#141c2b]">
-                              {initials}
-                            </div>
-                          )}
-
-                          {/* Member Info: Name + Founder/Co-Leader Tag + Branch */}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <h4 className="font-sans font-bold text-xs text-[#141c2b] group-hover:text-[#d84c23] transition-colors truncate">
-                                {member.name}
-                              </h4>
-                              {isMemberFounder ? (
-                                <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#d84c23] text-white rounded-2xs flex items-center gap-0.5 shadow-[1px_1px_0px_#141c2b]">
-                                  <Crown className="w-2.5 h-2.5" /> Head
-                                </span>
-                              ) : isMemberCoLeader ? (
-                                <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#2b59ff] text-white rounded-2xs flex items-center gap-0.5 shadow-[1px_1px_0px_#141c2b]">
-                                  <ShieldCheck className="w-2.5 h-2.5" /> Co-Leader
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="font-mono text-[10px] text-[#545e6d] truncate">
-                              {member.branch} • {member.batch}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Co-Leader Promotion / Removal Controls */}
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {isFounder && !isMemberFounder && (
-                            <button
-                              type="button"
-                              onClick={(e) => handleToggleCoLeader(member.id, member.role, e)}
-                              className={`font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-2xs border transition-all cursor-pointer ${
-                                isMemberCoLeader
-                                  ? "bg-[#eae2d5] text-[#141c2b] border-[#141c2b] hover:bg-white"
-                                  : "bg-[#2b59ff] text-white border-[#141c2b] hover:bg-blue-700 shadow-[1px_1px_0px_#141c2b]"
-                              }`}
-                              title={isMemberCoLeader ? "Revoke Co-Leader status" : "Promote to Co-Leader"}
-                            >
-                              {isMemberCoLeader ? "Revoke" : "+ Co-Leader"}
-                            </button>
-                          )}
-
-                          {canRemoveMembers && !isMemberFounder && !isMemberSelf && (
-                            <button
-                              type="button"
-                              onClick={(e) => handleOpenKickModal(member, e)}
-                              className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-2xs border border-[#d84c23] bg-[#fbe8e6] text-[#d84c23] hover:bg-[#d84c23] hover:text-white transition-all cursor-pointer flex items-center gap-1"
-                              title="Kick member with reason"
-                            >
-                              <UserMinus className="w-3 h-3" />
-                              <span>Kick</span>
-                            </button>
-                          )}
-
-                          <ExternalLink className="w-3.5 h-3.5 text-[#8892a0] group-hover:text-[#d84c23] transition-colors ml-1" />
-                        </div>
+                return (
+                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
+                    {/* 1. LEADERSHIP SECTION */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold text-[#d84c23] uppercase tracking-wider pb-1">
+                        <Crown className="w-3.5 h-3.5 text-[#d84c23]" />
+                        <span>Community Leadership / Head</span>
                       </div>
-                    )
-                  })
-                ) : (
-                  <div className="text-center py-6 font-mono text-xs text-[#545e6d]">
-                    No members registered yet.
+                      {leadershipMembers.map((member) => {
+                        const initials = member.name
+                          .split(" ")
+                          .map((w) => w[0])
+                          .join("")
+                          .toUpperCase()
+                          .slice(0, 2)
+
+                        return (
+                          <div
+                            key={member.id}
+                            onClick={() => handleMemberClick(member)}
+                            className="group flex items-center justify-between p-3 bg-[#faf7f2] border-2 border-[#141c2b] rounded-xs shadow-[3px_3px_0px_#d84c23] hover:bg-white hover:translate-x-[-1px] transition-all cursor-pointer gap-2"
+                            title={`View Head ${member.name}'s profile`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {member.avatar_url ? (
+                                <img
+                                  src={member.avatar_url}
+                                  alt={member.name}
+                                  className="w-10 h-10 rounded-xs object-cover border-1.5 border-[#141c2b] flex-shrink-0 shadow-[1px_1px_0px_#141c2b]"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-xs bg-[#141c2b] text-white font-serif font-black flex items-center justify-center text-xs flex-shrink-0 border-1.5 border-[#141c2b]">
+                                  {initials}
+                                </div>
+                              )}
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="font-sans font-bold text-xs text-[#141c2b] group-hover:text-[#d84c23] transition-colors truncate">
+                                    {member.name}
+                                  </h4>
+                                  <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#d84c23] text-white rounded-2xs flex items-center gap-0.5 shadow-[1px_1px_0px_#141c2b]">
+                                    <Crown className="w-2.5 h-2.5" /> Head
+                                  </span>
+                                </div>
+                                <p className="font-mono text-[10px] text-[#545e6d] truncate">
+                                  {member.branch} • {member.batch}
+                                </p>
+                              </div>
+                            </div>
+
+                            <ExternalLink className="w-3.5 h-3.5 text-[#8892a0] group-hover:text-[#d84c23] transition-colors ml-1" />
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* 2. CLEAR DIVIDER GAP */}
+                    <div className="flex items-center gap-3 pt-2 pb-1">
+                      <div className="flex-1 h-[1.5px] bg-[#d8cebe]" />
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#545e6d] bg-[#f5f1ea] px-2 py-0.5 rounded-2xs border border-[#d8cebe]">
+                        Community Members ({regularMembers.length})
+                      </span>
+                      <div className="flex-1 h-[1.5px] bg-[#d8cebe]" />
+                    </div>
+
+                    {/* 3. REGULAR MEMBERS LIST */}
+                    {regularMembers.length > 0 ? (
+                      <div className="space-y-2">
+                        {regularMembers.map((member) => {
+                          const initials = member.name
+                            .split(" ")
+                            .map((w) => w[0])
+                            .join("")
+                            .toUpperCase()
+                            .slice(0, 2)
+
+                          const isMemberCoLeader = Boolean(member.role === "co-leader")
+                          const isMemberSelf = Boolean(
+                            activeProfile?.display_name &&
+                            member.name.trim().toLowerCase() === activeProfile.display_name.trim().toLowerCase()
+                          )
+
+                          return (
+                            <div
+                              key={member.id}
+                              onClick={() => handleMemberClick(member)}
+                              className="group flex items-center justify-between p-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] hover:bg-white hover:border-[#d84c23] transition-all cursor-pointer gap-2"
+                              title={`View ${member.name}'s profile`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {member.avatar_url ? (
+                                  <img
+                                    src={member.avatar_url}
+                                    alt={member.name}
+                                    className="w-9 h-9 rounded-xs object-cover border-1.5 border-[#141c2b] flex-shrink-0 shadow-[1px_1px_0px_#141c2b]"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-xs bg-[#141c2b] text-white font-serif font-black flex items-center justify-center text-xs flex-shrink-0 border-1.5 border-[#141c2b]">
+                                    {initials}
+                                  </div>
+                                )}
+
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h4 className="font-sans font-bold text-xs text-[#141c2b] group-hover:text-[#d84c23] transition-colors truncate">
+                                      {member.name}
+                                    </h4>
+                                    {isMemberCoLeader && (
+                                      <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#2b59ff] text-white rounded-2xs flex items-center gap-0.5 shadow-[1px_1px_0px_#141c2b]">
+                                        <ShieldCheck className="w-2.5 h-2.5" /> Co-Leader
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="font-mono text-[10px] text-[#545e6d] truncate">
+                                    {member.branch} • {member.batch}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Co-Leader Promotion / Kick Controls */}
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {isFounder && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleToggleCoLeader(member.id, member.role, e)}
+                                    className={`font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-2xs border transition-all cursor-pointer ${
+                                      isMemberCoLeader
+                                        ? "bg-[#eae2d5] text-[#141c2b] border-[#141c2b] hover:bg-white"
+                                        : "bg-[#2b59ff] text-white border-[#141c2b] hover:bg-blue-700 shadow-[1px_1px_0px_#141c2b]"
+                                    }`}
+                                    title={isMemberCoLeader ? "Revoke Co-Leader status" : "Promote to Co-Leader"}
+                                  >
+                                    {isMemberCoLeader ? "Revoke" : "+ Co-Leader"}
+                                  </button>
+                                )}
+
+                                {canRemoveMembers && !isMemberSelf && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleOpenKickModal(member, e)}
+                                    className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-2xs border border-[#d84c23] bg-[#fbe8e6] text-[#d84c23] hover:bg-[#d84c23] hover:text-white transition-all cursor-pointer flex items-center gap-1"
+                                    title="Kick member with reason"
+                                  >
+                                    <UserMinus className="w-3 h-3" />
+                                    <span>Kick</span>
+                                  </button>
+                                )}
+
+                                <ExternalLink className="w-3.5 h-3.5 text-[#8892a0] group-hover:text-[#d84c23] transition-colors ml-1" />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-white border-2 border-dashed border-[#141c2b]/30 rounded-xs text-center font-mono text-xs text-[#545e6d]">
+                        No other members have joined yet. Be the first to join this community!
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                )
+              })()}
             </div>
           )}
         </section>
