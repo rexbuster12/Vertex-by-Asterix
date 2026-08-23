@@ -6,7 +6,7 @@ export const COMMUNITY_CLUBS = [
   "YRC – Youth Red Cross",
 ]
 
-export const ALL_CLUBS = [
+export const REGULAR_CLUBS = [
   "ACM- Association for Computing Machinery",
   "Agraga- The HR & IR Club",
   "Automobile Club",
@@ -28,11 +28,22 @@ export const ALL_CLUBS = [
   "Strokes",
   "TSEC – The Startup And Entrepreneurship Club",
   "Wellness Tribe",
+]
+
+// 1. Major Club: All 21 Regular Clubs + 3 Community Clubs + "Sports" (24 BMU Clubs + Sports)
+export const MAJOR_CLUBS = [
+  ...REGULAR_CLUBS,
+  ...COMMUNITY_CLUBS,
   "Sports",
 ]
 
-export const MAJOR_CLUBS = ALL_CLUBS
-export const MINOR_CLUBS = ALL_CLUBS
-export const REGULAR_CLUBS = ALL_CLUBS.filter((c) => c !== "Sports")
+// 2. Minor Club: 21 Regular Clubs + "Sports" (Without Community Clubs)
+export const MINOR_CLUBS = [
+  ...REGULAR_CLUBS,
+  "Sports",
+]
+
+export const ALL_CLUBS = MAJOR_CLUBS
+
 
 

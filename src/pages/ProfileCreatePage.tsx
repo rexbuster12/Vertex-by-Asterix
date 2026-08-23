@@ -4,7 +4,7 @@ import { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
 import { saveStudentProfile, uploadAvatarImage } from "../lib/supabaseService"
 import { supabase } from "../lib/supabase"
-import { COMMUNITY_CLUBS, MAJOR_CLUBS, ALL_CLUBS } from "../lib/clubsData"
+import { COMMUNITY_CLUBS, MAJOR_CLUBS, MINOR_CLUBS } from "../lib/clubsData"
 
 const START_YEARS = [2022, 2023, 2024, 2025, 2026]
 const END_YEARS = [2027, 2028, 2029, 2030, 2031]
@@ -358,7 +358,7 @@ function ProfileSetup() {
                 className="w-full px-3 py-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] focus:outline-none shadow-[2px_2px_0px_#141c2b] cursor-pointer"
               >
                 <option value="">-- None / Select Minor Club --</option>
-                {ALL_CLUBS.filter((c) => !majorClub || c !== majorClub).map((c) => (
+                {MINOR_CLUBS.filter((c) => !majorClub || c !== majorClub).map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>

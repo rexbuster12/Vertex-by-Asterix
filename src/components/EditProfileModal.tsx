@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { screenFields, validateInstagramLink, validateLinkedInLink } from "../lib/contentFilter"
-import { COMMUNITY_CLUBS, MAJOR_CLUBS, ALL_CLUBS } from "../lib/clubsData"
+import { COMMUNITY_CLUBS, MAJOR_CLUBS, MINOR_CLUBS } from "../lib/clubsData"
 import { uploadAvatarImage } from "../lib/supabaseService"
 import { getActiveUser } from "../lib/tempStore"
 
@@ -332,7 +332,7 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
                   className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none cursor-pointer"
                 >
                   <option value="">-- None / Select Minor Club --</option>
-                  {ALL_CLUBS.filter((c) => !form.major_club || c !== form.major_club).map((c) => (
+                  {MINOR_CLUBS.filter((c) => !form.major_club || c !== form.major_club).map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
