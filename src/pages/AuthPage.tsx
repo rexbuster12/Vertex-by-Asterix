@@ -124,20 +124,19 @@ function AuthPage() {
           navigate("/profile/create", { replace: true })
         }, 500)
       } else {
-        await signInStudent(fullEmail, password)
-        const profile = getActiveProfile()
+        const { profile: restoredProfile } = await signInStudent(fullEmail, password)
         setMessage({
           type: "success",
           text: "Signed in successfully! Redirecting...",
         })
         setTimeout(() => {
           setLoading(false)
-          if (profile) {
+          if (restoredProfile || getActiveProfile()) {
             navigate("/home", { replace: true })
           } else {
             navigate("/profile/create", { replace: true })
           }
-        }, 500)
+        }, 400)
       }
     } catch (err: unknown) {
       const errorMsg = (err as Error)?.message || "Authentication failed. Please check your credentials."

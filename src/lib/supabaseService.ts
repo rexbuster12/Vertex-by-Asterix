@@ -131,6 +131,8 @@ export async function signInStudent(email: string, password: string) {
   }
   setCachedUser(user)
 
+  let studentProfile: ActiveProfile | null = null
+
   // Fetch student profile from Supabase by user.id OR email
   try {
     let query = supabase.from("profiles").select("*")
@@ -145,12 +147,13 @@ export async function signInStudent(email: string, password: string) {
     if (profile && !profileErr) {
       console.log("📥 [PROFILE RESTORED FROM SUPABASE FOR @" + username + "]:", profile)
       setCachedProfile(profile)
+      studentProfile = profile
     }
   } catch (err) {
     console.warn("Could not fetch remote profile on sign in:", err)
   }
 
-  return user
+  return { user, profile: studentProfile }
 }
 
 export async function signOutStudent() {
@@ -232,7 +235,17 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
       .single()
 
     if (error) {
-      console.error("❌ Supabase profiles upsert error:", error.message, error.details, error.hint)
+      console.warn("Supabase profiles upsert id error, trying email conflict fallback:", error.message)
+      const { data: data2, error: error2 } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "email" })
+        .select()
+        .single()
+      if (data2 && !error2) {
+        console.log("✅ [PROFILE SUCCESSFULLY PERSISTED IN SUPABASE VIA EMAIL]:", data2)
+        setCachedProfile(data2)
+        return data2
+      }
     } else if (data) {
       console.log("✅ [PROFILE SUCCESSFULLY PERSISTED IN SUPABASE]:", data)
       setCachedProfile(data)
