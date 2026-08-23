@@ -1,6 +1,6 @@
 import { supabase } from "./supabase"
 import type { ActiveProfile, ActiveUser } from "./tempStore"
-import { setActiveUser, setActiveProfile } from "./tempStore"
+import { setActiveUser, setActiveProfile, getActiveProfile, getActiveUser } from "./tempStore"
 
 // ── PERSISTED SESSION & CACHE HELPERS ───────────────────────────────────────
 const USER_CACHE_KEY = "vertex_auth_user"
@@ -434,12 +434,15 @@ async function formatCommunityPayload(comm: any) {
     .eq("community_id", comm.id)
     .order("created_at", { ascending: false })
 
-  // Fetch founder profile if available
+  const activeProfile = getActiveProfile()
+  const activeUser = getActiveUser()
+
   let creatorInfo = {
-    name: "Student Leader",
-    branch: "BML Munjal University",
-    batch: "Student",
-    email: undefined as string | undefined,
+    name: comm.created_by_name || activeProfile?.display_name || activeUser?.name || "Campus Founder",
+    branch: activeProfile?.branch || "BML Munjal University",
+    batch: activeProfile?.batch || "Student",
+    email: comm.created_by_email || activeUser?.email || undefined as string | undefined,
+    avatar_url: activeProfile?.avatar_url || undefined as string | undefined,
   }
 
   if (comm.created_by && isUUID(comm.created_by)) {
@@ -452,9 +455,10 @@ async function formatCommunityPayload(comm: any) {
       if (creator) {
         creatorInfo = {
           name: creator.display_name,
-          branch: creator.branch,
-          batch: creator.batch,
+          branch: creator.branch || "BML Munjal University",
+          batch: creator.batch || "Student",
           email: creator.email,
+          avatar_url: creator.avatar_url,
         }
       }
     } catch (e) {
@@ -495,6 +499,7 @@ async function formatCommunityPayload(comm: any) {
         name: creatorInfo.name,
         branch: creatorInfo.branch,
         batch: creatorInfo.batch,
+        avatar_url: creatorInfo.avatar_url,
         is_founder: true,
         role: "founder" as const,
       },

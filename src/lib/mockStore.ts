@@ -423,3 +423,48 @@ export function createMockCommunity(payload: {
 
   return newCommunity
 }
+
+export function transferCommunityFounder(
+  communityNameOrId: string,
+  newFounderId: string
+): MockCommunity | null {
+  const all = getStoredCommunities()
+  const clean = decodeURIComponent(communityNameOrId).trim().toLowerCase()
+  let updatedCommunity: MockCommunity | null = null
+
+  const updatedList = all.map((c) => {
+    if (c.id === communityNameOrId || c.name.trim().toLowerCase() === clean) {
+      const newFounderMember = (c.members || []).find((m) => m.id === newFounderId)
+      if (!newFounderMember) return c
+
+      const updatedMembers = (c.members || []).map((m) => {
+        if (m.id === newFounderId) {
+          return { ...m, is_founder: true, role: "founder" as const }
+        }
+        if (m.is_founder) {
+          return { ...m, is_founder: false, role: "member" as const }
+        }
+        return m
+      })
+
+      updatedCommunity = {
+        ...c,
+        created_by: {
+          name: newFounderMember.name,
+          branch: newFounderMember.branch,
+          batch: newFounderMember.batch,
+        },
+        members: updatedMembers,
+      }
+      return updatedCommunity
+    }
+    return c
+  })
+
+  if (updatedCommunity) {
+    saveStoredCommunities(updatedList)
+    console.log(`👑 [COMMUNITY FOUNDERSHIP TRANSFERRED IN ${communityNameOrId}]: New Founder -> ${newFounderId}`)
+  }
+  return updatedCommunity
+}
+

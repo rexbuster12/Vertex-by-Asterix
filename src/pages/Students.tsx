@@ -365,11 +365,10 @@ function Students() {
           <button
             type="button"
             onClick={() => setConnectionFilter("all")}
-            className={`px-3 py-1.5 rounded-xs font-mono text-xs font-bold uppercase border-2 transition-all cursor-pointer flex items-center gap-1.5 ${
-              connectionFilter === "all"
+            className={`px-3 py-1.5 rounded-xs font-mono text-xs font-bold uppercase border-2 transition-all cursor-pointer flex items-center gap-1.5 ${connectionFilter === "all"
                 ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[1.5px_1.5px_0px_#d84c23]"
                 : "bg-[#f5f1ea] text-[#141c2b] border-[#141c2b] hover:bg-white"
-            }`}
+              }`}
           >
             {connectionFilter === "all" ? (
               <CheckSquare className="w-3.5 h-3.5 text-[#d84c23]" />
@@ -382,11 +381,10 @@ function Students() {
           <button
             type="button"
             onClick={() => setConnectionFilter("connected")}
-            className={`px-3 py-1.5 rounded-xs font-mono text-xs font-bold uppercase border-2 transition-all cursor-pointer flex items-center gap-1.5 ${
-              connectionFilter === "connected"
+            className={`px-3 py-1.5 rounded-xs font-mono text-xs font-bold uppercase border-2 transition-all cursor-pointer flex items-center gap-1.5 ${connectionFilter === "connected"
                 ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[1.5px_1.5px_0px_#d84c23]"
                 : "bg-[#f5f1ea] text-[#141c2b] border-[#141c2b] hover:bg-white"
-            }`}
+              }`}
           >
             {connectionFilter === "connected" ? (
               <CheckSquare className="w-3.5 h-3.5 text-[#d84c23]" />
@@ -435,9 +433,8 @@ function Students() {
             return (
               <div
                 key={student.id}
-                className={`bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-5 shadow-[4px_4px_0px_#141c2b] flex flex-col justify-between space-y-3 hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all relative ${
-                  isBlocked ? "opacity-75 bg-[#f5f1ea]" : ""
-                }`}
+                className={`bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-5 shadow-[4px_4px_0px_#141c2b] flex flex-col justify-between space-y-3 hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all relative ${isBlocked ? "opacity-75 bg-[#f5f1ea]" : ""
+                  }`}
               >
                 <div className="flex items-start gap-3.5">
                   {student.avatarPhoto ? (
@@ -545,11 +542,10 @@ function Students() {
                           <button
                             type="button"
                             onClick={() => toggleConnect(student.id, student.name)}
-                            className={`font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] transition-all cursor-pointer ${
-                              isConnected
+                            className={`font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-1.5 border-[#141c2b] transition-all cursor-pointer ${isConnected
                                 ? "bg-[#eae2d5] text-[#141c2b] shadow-[1px_1px_0px_#141c2b]"
                                 : "bg-[#141c2b] text-[#ffffff] shadow-[2px_2px_0px_#d84c23] hover:translate-x-[-1px] hover:translate-y-[-1px]"
-                            }`}
+                              }`}
                           >
                             {isConnected ? "Connected ✓" : "+ Connect"}
                           </button>
@@ -572,7 +568,7 @@ function Students() {
         </div>
       ) : (
         <div className="text-center py-16 px-4 bg-[#faf7f2] border-2 border-dashed border-[#141c2b] rounded-lg space-y-4">
-          <p className="font-serif text-2xl font-bold text-[#141c2b]">Student directory is empty</p>
+          <p className="font-serif text-2xl font-bold text-[#141c2b]">No Student Found</p>
           <p className="text-sm text-[#545e6d] max-w-xl mx-auto">
             There are no student profiles yet. Create your student profile to appear in the directory.
           </p>

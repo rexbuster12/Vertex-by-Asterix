@@ -31,11 +31,12 @@ import {
   deleteCommunityAnnouncement,
   setMemberRole,
   removeCommunityMember,
+  transferCommunityFounder,
   toggleAnnouncementReaction,
   type MockCommunity,
   type CommunityMember,
 } from "../lib/mockStore"
-import { getActiveProfile } from "../lib/tempStore"
+import { getActiveProfile, getActiveUser } from "../lib/tempStore"
 import { addNotification } from "../lib/notificationStore"
 import { fetchCommunityDetailFromDb, deleteCommunityInDb, deleteAnnouncementInDb } from "../lib/supabaseService"
 import { supabase } from "../lib/supabase"
@@ -56,7 +57,17 @@ function CommunityDetail() {
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false)
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
 
+  // Kick Member Modal State
+  const [memberToKick, setMemberToKick] = useState<CommunityMember | null>(null)
+  const [kickReason, setKickReason] = useState("Violation of community guidelines or inactivity.")
+  const [isKickModalOpen, setIsKickModalOpen] = useState(false)
+
+  // Founder Departure / Handover Modal State
+  const [isFounderDepartureOpen, setIsFounderDepartureOpen] = useState(false)
+  const [selectedSuccessorId, setSelectedSuccessorId] = useState("")
+
   const activeProfile = getActiveProfile()
+  const activeUser = getActiveUser()
 
   useEffect(() => {
     async function loadCommunity() {
@@ -72,6 +83,11 @@ function CommunityDetail() {
       if (localFound) {
         setCommunity(localFound)
         setMemberCount(localFound.members_count || localFound.members?.length || 1)
+        const isUserFounder = Boolean(
+          (activeProfile?.display_name && localFound.created_by?.name && activeProfile.display_name.trim().toLowerCase() === localFound.created_by.name.trim().toLowerCase()) ||
+          (activeUser?.id && localFound.created_by && (localFound.created_by as any) === activeUser.id)
+        )
+        if (isUserFounder) setJoined(true)
       }
 
       // 2. Fetch live data from Supabase
@@ -80,6 +96,11 @@ function CommunityDetail() {
         if (remoteCommunity) {
           setCommunity(remoteCommunity as MockCommunity)
           setMemberCount(remoteCommunity.members_count || remoteCommunity.members?.length || 1)
+          const isUserFounder = Boolean(
+            (activeProfile?.display_name && remoteCommunity.created_by?.name && activeProfile.display_name.trim().toLowerCase() === remoteCommunity.created_by.name.trim().toLowerCase()) ||
+            (activeUser?.id && remoteCommunity.created_by && (remoteCommunity.created_by as any) === activeUser.id)
+          )
+          if (isUserFounder) setJoined(true)
         } else if (!localFound) {
           setCommunity(null)
         }
@@ -93,22 +114,81 @@ function CommunityDetail() {
     loadCommunity()
   }, [communityName])
 
+  // Check roles
+  const isFounder = Boolean(
+    community &&
+    ((activeProfile?.display_name &&
+      community.created_by?.name &&
+      activeProfile.display_name.trim().toLowerCase() === community.created_by.name.trim().toLowerCase()) ||
+     (activeUser?.id && (community.created_by as any) === activeUser.id))
+  )
+
   const handleToggleJoin = async () => {
+    if (!community) return
+
+    // If Founder clicks leave, open departure handover modal
+    if (isFounder) {
+      setIsFounderDepartureOpen(true)
+      return
+    }
+
     if (joined) {
       setJoined(false)
       setMemberCount((prev) => Math.max(1, prev - 1))
+      if (activeProfile?.display_name) {
+        removeCommunityMember(community.name, activeProfile.display_name)
+      }
     } else {
       setJoined(true)
       setMemberCount((prev) => prev + 1)
-      if (community) {
-        addNotification({
-          type: "member_joined",
-          title: `Joined ${community.name}`,
-          message: `You joined ${community.name}. You'll receive updates and bulletins from this community.`,
-          linkUrl: `/communities/${encodeURIComponent(community.name)}`,
-          communityName: community.name,
-        })
+      addNotification({
+        type: "member_joined",
+        title: `Joined ${community.name}`,
+        message: `You joined ${community.name}. You'll receive updates and bulletins from this community.`,
+        linkUrl: `/communities/${encodeURIComponent(community.name)}`,
+        communityName: community.name,
+      })
+    }
+  }
+
+  const handleOpenKickModal = (member: CommunityMember, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    setMemberToKick(member)
+    setKickReason("Inappropriate conduct or violation of community standards.")
+    setIsKickModalOpen(true)
+  }
+
+  const handleConfirmKick = () => {
+    if (!community || !memberToKick) return
+    const updated = removeCommunityMember(community.name, memberToKick.id)
+    if (updated) setCommunity(updated)
+    setMemberCount((prev) => Math.max(1, prev - 1))
+
+    // Send kick notification
+    addNotification({
+      type: "connection_received",
+      title: `Removed from ${community.name}`,
+      message: `You were removed from ${community.name}. Reason: ${kickReason}`,
+      linkUrl: `/communities`,
+      sourceName: community.name,
+    })
+
+    setIsKickModalOpen(false)
+    setMemberToKick(null)
+  }
+
+  const handleFounderTransferAndLeave = () => {
+    if (!community || !selectedSuccessorId) return
+    const updated = transferCommunityFounder(community.name, selectedSuccessorId)
+    if (updated) {
+      // Now remove previous founder from member list
+      if (activeProfile?.display_name) {
+        removeCommunityMember(community.name, activeProfile.display_name)
       }
+      setJoined(false)
+      setMemberCount((prev) => Math.max(1, prev - 1))
+      setIsFounderDepartureOpen(false)
+      navigate("/communities")
     }
   }
 
@@ -175,16 +255,6 @@ function CommunityDetail() {
     const newRole = currentRole === "co-leader" ? "member" : "co-leader"
     const updated = setMemberRole(community.name, memberId, newRole)
     if (updated) setCommunity(updated)
-  }
-
-  const handleRemoveMember = (memberId: string, memberName: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation()
-    if (!community) return
-    const confirmRemove = window.confirm(`Are you sure you want to remove ${memberName} from ${community.name}?`)
-    if (confirmRemove) {
-      const updated = removeCommunityMember(community.name, memberId)
-      if (updated) setCommunity(updated)
-    }
   }
 
   const handleReaction = async (announcementId: string, reactionType: "like" | "dislike", e?: React.MouseEvent) => {
@@ -288,13 +358,6 @@ function CommunityDetail() {
       </div>
     )
   }
-
-  // Check roles
-  const isFounder = Boolean(
-    activeProfile?.display_name &&
-    community.created_by?.name &&
-    activeProfile.display_name.trim().toLowerCase() === community.created_by.name.trim().toLowerCase()
-  )
 
   const activeMember = (community.members || []).find(
     (m) => activeProfile?.display_name && m.name.trim().toLowerCase() === activeProfile.display_name.trim().toLowerCase()
@@ -761,11 +824,12 @@ function CommunityDetail() {
                           {canRemoveMembers && !isMemberFounder && !isMemberSelf && (
                             <button
                               type="button"
-                              onClick={(e) => handleRemoveMember(member.id, member.name, e)}
-                              className="p-1 text-[#8892a0] hover:text-[#d84c23] hover:bg-[#fbe8e6] rounded-xs transition-colors cursor-pointer border border-transparent hover:border-[#d84c23]"
-                              title="Remove member from community"
+                              onClick={(e) => handleOpenKickModal(member, e)}
+                              className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-2xs border border-[#d84c23] bg-[#fbe8e6] text-[#d84c23] hover:bg-[#d84c23] hover:text-white transition-all cursor-pointer flex items-center gap-1"
+                              title="Kick member with reason"
                             >
-                              <UserMinus className="w-3.5 h-3.5" />
+                              <UserMinus className="w-3 h-3" />
+                              <span>Kick</span>
                             </button>
                           )}
 
@@ -793,6 +857,177 @@ function CommunityDetail() {
           onClose={() => setIsAnnouncementModalOpen(false)}
           onPublish={handlePublishAnnouncement}
         />
+      )}
+
+      {/* ── KICK MEMBER MODAL ────────────────────────────────────── */}
+      {isKickModalOpen && memberToKick && (
+        <div className="fixed inset-0 z-[999] bg-[#141c2b]/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg max-w-md w-full p-6 shadow-[8px_8px_0px_#141c2b] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#d8cebe] pb-2.5">
+              <div>
+                <span className="font-mono text-[10px] font-bold text-[#d84c23] uppercase">
+                  FOUNDER PERMISSION // REMOVE MEMBER
+                </span>
+                <h3 className="font-serif text-xl font-bold text-[#141c2b]">
+                  Kick Member from Community
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsKickModalOpen(false)}
+                className="font-mono text-xs font-bold text-[#545e6d] hover:text-[#141c2b] p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 bg-[#f5f1ea] border border-[#141c2b] rounded-xs">
+              <div className="w-10 h-10 rounded-xs bg-[#141c2b] text-white font-serif font-black flex items-center justify-center text-xs flex-shrink-0">
+                {memberToKick.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="font-serif font-bold text-sm text-[#141c2b] truncate">{memberToKick.name}</p>
+                <p className="font-mono text-[10px] text-[#545e6d]">{memberToKick.branch} • {memberToKick.batch}</p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block font-mono text-xs font-bold uppercase text-[#141c2b]">
+                Kick Reason / Message <span className="text-[#d84c23]">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={kickReason}
+                onChange={(e) => setKickReason(e.target.value)}
+                placeholder="Explain reason for removal (will be sent in student notification)..."
+                className="w-full px-3 py-2 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs text-xs font-mono text-[#141c2b] focus:outline-none shadow-[2px_2px_0px_#141c2b] resize-none"
+              />
+              <p className="font-mono text-[10px] text-[#8892a0]">
+                This message will be dispatched directly to the student's Vertex alerts.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-[#d8cebe]">
+              <button
+                type="button"
+                onClick={() => setIsKickModalOpen(false)}
+                className="secondary-action text-xs font-mono"
+                style={{ padding: "0.5rem 1rem" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmKick}
+                className="font-mono text-xs font-bold uppercase px-4 py-2 bg-[#d84c23] text-white border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] hover:bg-red-700 cursor-pointer"
+              >
+                Confirm Kick
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FOUNDER DEPARTURE / HANDOVER MODAL ────────────────────── */}
+      {isFounderDepartureOpen && (
+        <div className="fixed inset-0 z-[999] bg-[#141c2b]/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg max-w-lg w-full p-6 shadow-[8px_8px_0px_#141c2b] space-y-5">
+            <div className="flex items-center justify-between border-b border-[#d8cebe] pb-2.5">
+              <div>
+                <span className="font-mono text-[10px] font-bold text-[#d84c23] uppercase">
+                  FOUNDER ACTIONS // DEPARTURE & HANDOVER
+                </span>
+                <h3 className="font-serif text-2xl font-black text-[#141c2b]">
+                  Leave Community
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsFounderDepartureOpen(false)}
+                className="font-mono text-xs font-bold text-[#545e6d] hover:text-[#141c2b] p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-[#545e6d] leading-relaxed">
+              As the <b>Founder & Leader</b> of <b>{community.name}</b>, you cannot simply leave. You must choose to either <b>permanently delete the community</b> or <b>hand over founder leadership</b> to another member.
+            </p>
+
+            {/* Choice 1: Transfer Leadership */}
+            {community.members && community.members.filter((m) => !m.is_founder).length > 0 ? (
+              <div className="p-4 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs space-y-3 shadow-[2px_2px_0px_#141c2b]">
+                <h4 className="font-serif font-bold text-sm text-[#141c2b] flex items-center gap-1.5">
+                  <Crown className="w-4 h-4 text-[#d84c23]" />
+                  <span>Option A: Transfer Founder Role & Leave</span>
+                </h4>
+                <div className="space-y-1.5">
+                  <label className="block font-mono text-[11px] font-bold uppercase text-[#545e6d]">
+                    Select Successor Member:
+                  </label>
+                  <select
+                    value={selectedSuccessorId}
+                    onChange={(e) => setSelectedSuccessorId(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- Choose Member to Promote to Founder --</option>
+                    {community.members
+                      .filter((m) => !m.is_founder)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.branch} • {m.batch})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  disabled={!selectedSuccessorId}
+                  onClick={handleFounderTransferAndLeave}
+                  className={`w-full py-2.5 font-mono text-xs font-bold uppercase rounded-xs border-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    selectedSuccessorId
+                      ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[2px_2px_0px_#d84c23] hover:bg-[#d84c23]"
+                      : "bg-[#eae2d5] text-[#8892a0] border-[#141c2b]/40 cursor-not-allowed"
+                  }`}
+                >
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>Transfer Leadership & Leave Community</span>
+                </button>
+              </div>
+            ) : (
+              <div className="p-3.5 bg-[#fbe8e6] border-2 border-[#d84c23] rounded-xs text-xs font-mono text-[#d84c23]">
+                ℹ️ There are no other members in this community to transfer leadership to. You must delete the community to proceed.
+              </div>
+            )}
+
+            {/* Choice 2: Delete Community */}
+            <div className="p-4 bg-[#fbe8e6] border-2 border-[#d84c23] rounded-xs space-y-2.5 shadow-[2px_2px_0px_#d84c23]">
+              <h4 className="font-serif font-bold text-sm text-[#d84c23] flex items-center gap-1.5">
+                <Trash2 className="w-4 h-4" />
+                <span>Option B: Delete Community</span>
+              </h4>
+              <p className="text-xs text-[#545e6d]">
+                This will permanently delete {community.name}, remove all announcements, and erase the community from the university bulletin board.
+              </p>
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="font-mono text-xs font-bold uppercase px-4 py-2 bg-[#d84c23] text-white border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] hover:bg-red-700 transition-colors cursor-pointer"
+              >
+                Permanently Delete Community
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setIsFounderDepartureOpen(false)}
+                className="secondary-action text-xs font-mono"
+                style={{ padding: "0.5rem 1rem" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Announcement Confirmation Dialog */}
