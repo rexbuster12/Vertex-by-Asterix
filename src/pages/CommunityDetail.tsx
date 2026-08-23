@@ -611,7 +611,7 @@ function CommunityDetail() {
             {/* Member Count badge */}
             <div className="flex items-center gap-2 bg-[#eae2d5] border-2 border-[#141c2b] px-4 py-2 rounded-xs shadow-[2px_2px_0px_#141c2b] self-start font-mono text-xs font-bold text-[#141c2b]">
               <Users className="w-4 h-4 text-[#d84c23]" />
-              <span>{memberCount} Active Members</span>
+              <span>{memberCount === 1 ? "1 Member" : `${memberCount} Members`}</span>
             </div>
           </div>
 

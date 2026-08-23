@@ -879,13 +879,21 @@ export async function fetchUserJoinedCommunityNames(): Promise<string[]> {
     try {
       const { data: memberRows } = await supabase
         .from("community_members")
-        .select("community_id, communities(name)")
+        .select("community_id")
         .eq("user_id", currentProfileId)
 
-      if (memberRows) {
-        for (const row of memberRows as any[]) {
-          if (row.communities?.name) {
-            names.add(row.communities.name.trim().toLowerCase())
+      if (memberRows && memberRows.length > 0) {
+        const commIds = memberRows.map((r: any) => r.community_id).filter(Boolean)
+        if (commIds.length > 0) {
+          const { data: comms } = await supabase
+            .from("communities")
+            .select("id, name")
+            .in("id", commIds)
+
+          if (comms) {
+            for (const c of comms) {
+              if (c.name) names.add(c.name.trim().toLowerCase())
+            }
           }
         }
       }
