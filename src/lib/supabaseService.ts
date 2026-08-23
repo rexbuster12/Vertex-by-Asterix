@@ -42,11 +42,52 @@ export function setCachedProfile(profile: ActiveProfile | null) {
   setActiveProfile(profile)
 }
 
+export function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = (error) => reject(error)
+    reader.readAsDataURL(file)
+  })
+}
+
+export async function uploadAvatarImage(file: File, filenamePrefix?: string): Promise<string> {
+  // 1. Convert to Base64 so it can be rendered instantly and survive refreshes
+  const base64Url = await fileToBase64(file)
+  
+  // 2. Also try uploading to Supabase Storage 'avatars' bucket
+  try {
+    const fileExt = file.name.split('.').pop() || 'jpg'
+    const fileName = `${filenamePrefix || 'avatar'}_${Date.now()}.${fileExt}`
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: true
+      })
+    
+    if (!error && data?.path) {
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(data.path)
+      
+      if (publicUrlData?.publicUrl) {
+        return publicUrlData.publicUrl
+      }
+    }
+  } catch (err) {
+    console.warn("Supabase storage upload notice:", err)
+  }
+
+  return base64Url
+}
+
 // ── AUTHENTICATION ─────────────────────────────────────────────────────────
 
 export async function signUpStudent(email: string, password: string, username: string) {
+  const cleanEmail = email.trim().toLowerCase()
   const { data, error } = await supabase.auth.signUp({
-    email,
+    email: cleanEmail,
     password,
     options: {
       data: {
@@ -61,7 +102,7 @@ export async function signUpStudent(email: string, password: string, username: s
   }
 
   const user: ActiveUser = {
-    email,
+    email: cleanEmail,
     name: username.split(".").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(" "),
     username,
     id: data.user?.id,
@@ -71,8 +112,9 @@ export async function signUpStudent(email: string, password: string, username: s
 }
 
 export async function signInStudent(email: string, password: string) {
+  const cleanEmail = email.trim().toLowerCase()
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
+    email: cleanEmail,
     password,
   })
 
@@ -80,30 +122,32 @@ export async function signInStudent(email: string, password: string) {
     throw error
   }
 
-  const username = email.split("@")[0].toLowerCase()
+  const username = cleanEmail.split("@")[0].toLowerCase()
   const user: ActiveUser = {
-    email,
+    email: cleanEmail,
     name: data.user?.user_metadata?.display_name || username.split(".").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(" "),
     username,
     id: data.user?.id,
   }
   setCachedUser(user)
 
-  // Fetch student profile from Supabase if exists
-  if (data.user?.id) {
-    try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", data.user.id)
-        .maybeSingle()
-
-      if (profile) {
-        setCachedProfile(profile)
-      }
-    } catch (err) {
-      console.warn("Could not fetch remote profile on sign in:", err)
+  // Fetch student profile from Supabase by user.id OR email
+  try {
+    let query = supabase.from("profiles").select("*")
+    if (data.user?.id) {
+      query = query.or(`id.eq.${data.user.id},email.eq.${cleanEmail}`)
+    } else {
+      query = query.eq("email", cleanEmail)
     }
+
+    const { data: profile, error: profileErr } = await query.maybeSingle()
+
+    if (profile && !profileErr) {
+      console.log("📥 [PROFILE RESTORED FROM SUPABASE FOR @" + username + "]:", profile)
+      setCachedProfile(profile)
+    }
+  } catch (err) {
+    console.warn("Could not fetch remote profile on sign in:", err)
   }
 
   return user
@@ -120,15 +164,29 @@ export async function signOutStudent() {
 export async function saveStudentProfile(profileData: ActiveProfile, userId?: string) {
   setCachedProfile(profileData)
 
-  const uid = userId || getCachedUser()?.id
+  let uid = userId || getCachedUser()?.id
+
+  // If no UID yet, check Supabase auth session
   if (!uid) {
-    // If no Supabase user ID yet, keep cached in localStorage
+    const { data: authData } = await supabase.auth.getUser()
+    if (authData?.user?.id) {
+      uid = authData.user.id
+      const currentUser = getCachedUser()
+      if (currentUser) {
+        setCachedUser({ ...currentUser, id: uid })
+      }
+    }
+  }
+
+  if (!uid) {
     return profileData
   }
 
+  const cleanEmail = getCachedUser()?.email?.toLowerCase() || `${profileData.username || "student"}@bmu.edu.in`
+
   const payload = {
     id: uid,
-    email: getCachedUser()?.email || `${profileData.username || "student"}@bmu.edu.in`,
+    email: cleanEmail,
     username: profileData.username || getCachedUser()?.username || "",
     display_name: profileData.display_name,
     bio: profileData.bio,
@@ -152,8 +210,10 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
     .single()
 
   if (error) {
-    console.error("Supabase upsert profile error:", error)
-    // Non-fatal: local cache is already saved
+    console.warn("Supabase upsert profile notice:", error)
+  } else if (data) {
+    console.log("💾 [PROFILE PERSISTED TO SUPABASE DATABASE]:", data)
+    setCachedProfile(data)
   }
 
   return data || profileData

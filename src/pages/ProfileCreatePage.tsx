@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react"
 import { useNavigate } from "react-router"
 import { type ProfileData } from "../components/EditProfileModal"
-import { getActiveProfile, setActiveProfile } from "../lib/tempStore"
-import { saveStudentProfile } from "../lib/supabaseService"
+import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
+import { saveStudentProfile, uploadAvatarImage } from "../lib/supabaseService"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS, REGULAR_CLUBS } from "../lib/clubsData"
 
 const START_YEARS = [2022, 2023, 2024, 2025, 2026]
@@ -79,15 +79,21 @@ function ProfileSetup() {
     }
   }, [])
 
-  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
       setError("Profile picture must be under 5 MB.")
       return
     }
-    setAvatarPreview(URL.createObjectURL(file))
-    setError(null)
+    try {
+      const user = getActiveUser()
+      const permanentUrl = await uploadAvatarImage(file, user?.username || "student")
+      setAvatarPreview(permanentUrl)
+      setError(null)
+    } catch (err) {
+      console.warn("Avatar processing notice:", err)
+    }
   }
 
   function validateBatch() {

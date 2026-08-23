@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react"
 import { screenFields, validateInstagramLink, validateLinkedInLink } from "../lib/contentFilter"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS, REGULAR_CLUBS } from "../lib/clubsData"
+import { uploadAvatarImage } from "../lib/supabaseService"
+import { getActiveUser } from "../lib/tempStore"
 
 export type ProfileData = {
   display_name: string
@@ -74,15 +76,22 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
       setError("Profile picture must be under 5 MB.")
       return
     }
-    setAvatarPreview(URL.createObjectURL(file))
-    setError(null)
+    try {
+      const user = getActiveUser()
+      const permanentUrl = await uploadAvatarImage(file, user?.username || "student")
+      setAvatarPreview(permanentUrl)
+      setForm((prev) => ({ ...prev, avatar_url: permanentUrl }))
+      setError(null)
+    } catch (err) {
+      console.warn("Avatar upload notice:", err)
+    }
   }
 
   async function handleSave(e: React.FormEvent) {

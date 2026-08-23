@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from "react-router"
 import "./App.css"
 import Navbar from "./components/Navbar"
@@ -11,7 +12,8 @@ import ProfileCreatePage from "./pages/ProfileCreatePage"
 import CreateCommunityPage from "./pages/CreateCommunityPage"
 import CommunityDetail from "./pages/CommunityDetail"
 import Notifications from "./pages/Notifications"
-import { getActiveUser, getActiveProfile } from "./lib/tempStore"
+import { getActiveUser, getActiveProfile, setActiveProfile } from "./lib/tempStore"
+import { supabase } from "./lib/supabase"
 
 function ProtectedRoute({
   children,
@@ -50,6 +52,27 @@ function PublicAuthRoute({ children }: { children: React.ReactNode }) {
 function AppShell() {
   const location = useLocation()
   const isAuthRoute = ["/", "/login", "/signup"].includes(location.pathname)
+
+  useEffect(() => {
+    async function syncRemoteProfile() {
+      try {
+        const user = getActiveUser()
+        if (user?.email && !getActiveProfile()) {
+          const { data } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("email", user.email.toLowerCase())
+            .maybeSingle()
+          if (data) {
+            setActiveProfile(data)
+          }
+        }
+      } catch (err) {
+        console.warn("Remote profile sync notice:", err)
+      }
+    }
+    syncRemoteProfile()
+  }, [])
 
   return (
     <div className="app-shell min-h-screen flex flex-col bg-[#F5F1EA] text-[#14161B]">
