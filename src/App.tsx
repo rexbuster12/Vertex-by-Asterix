@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from "react-router"
 import "./App.css"
 import Navbar from "./components/Navbar"
@@ -22,8 +22,48 @@ function ProtectedRoute({
   children: React.ReactNode
   allowSetupOnly?: boolean
 }) {
-  const user = getActiveUser()
-  const profile = getActiveProfile()
+  const [checking, setChecking] = useState(true)
+  const [user, setUser] = useState(() => getActiveUser())
+  const [profile, setProfile] = useState(() => getActiveProfile())
+
+  useEffect(() => {
+    async function verifyAuth() {
+      const u = getActiveUser()
+      let p = getActiveProfile()
+
+      if (u?.email && (!p || !p.display_name)) {
+        try {
+          const { data } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("email", u.email.toLowerCase())
+            .maybeSingle()
+
+          if (data) {
+            setActiveProfile(data)
+            p = data
+          }
+        } catch (e) {
+          console.warn("Verify auth notice:", e)
+        }
+      }
+
+      setUser(u)
+      setProfile(p)
+      setChecking(false)
+    }
+
+    verifyAuth()
+  }, [])
+
+  if (checking) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center space-y-3">
+        <div className="w-8 h-8 border-3 border-[#141c2b] border-t-[#d84c23] rounded-full animate-spin"></div>
+        <span className="font-mono text-xs uppercase font-bold tracking-wider text-[#545e6d]">Connecting to Vertex...</span>
+      </div>
+    )
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />

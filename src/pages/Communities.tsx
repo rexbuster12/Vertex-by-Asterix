@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router"
 import { Search, PlusCircle } from "lucide-react"
 import CommunityCard, { type CommunityCardProps } from "../components/CommunityCard"
 import { getStoredCommunities } from "../lib/mockStore"
+import { fetchCommunitiesFromDb } from "../lib/supabaseService"
 
 function Communities() {
   const [searchParams] = useSearchParams()
@@ -11,10 +12,10 @@ function Communities() {
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "")
 
   useEffect(() => {
-    // Load directly from our resilient mockStore
-    try {
-      const list = getStoredCommunities()
-      const mapped: CommunityCardProps[] = list.map((c) => ({
+    async function loadCommunities() {
+      // 1. Initial render from local cache
+      const localList = getStoredCommunities()
+      const mappedLocal: CommunityCardProps[] = localList.map((c) => ({
         id: c.id,
         name: c.name,
         description: c.description,
@@ -24,12 +25,42 @@ function Communities() {
         instagram_link: c.instagram_link,
         image: c.image,
       }))
-      setCommunities(mapped)
-    } catch (err) {
-      console.warn("Error reading stored communities:", err)
-    } finally {
-      setLoading(false)
+      setCommunities(mappedLocal)
+
+      // 2. Fetch from Supabase cloud database
+      try {
+        const remote = await fetchCommunitiesFromDb()
+        if (remote && Array.isArray(remote) && remote.length > 0) {
+          const mappedRemote: CommunityCardProps[] = remote.map((c) => ({
+            id: c.id || c.name,
+            name: c.name,
+            description: c.description,
+            members: c.members_count || 1,
+            members_count: c.members_count || 1,
+            whatsapp_link: c.whatsapp_link,
+            instagram_link: c.instagram_link,
+            image: c.image,
+          }))
+
+          // Merge without duplicates
+          const seen = new Set<string>()
+          const combined = [...mappedRemote, ...mappedLocal].filter((c) => {
+            const k = c.name.trim().toLowerCase()
+            if (seen.has(k)) return false
+            seen.add(k)
+            return true
+          })
+
+          setCommunities(combined)
+        }
+      } catch (err) {
+        console.warn("Supabase fetch communities notice:", err)
+      } finally {
+        setLoading(false)
+      }
     }
+
+    loadCommunities()
   }, [])
 
   // Filter based on search query (name and description)

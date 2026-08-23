@@ -4,6 +4,7 @@ import { CheckCircle2, Image as ImageIcon } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon } from "./Icons"
 import CommunityCard from "./CommunityCard"
 import { createMockCommunity } from "../lib/mockStore"
+import { createCommunityInDb, uploadAvatarImage } from "../lib/supabaseService"
 import {
   screenFields,
   validateWhatsAppLink,
@@ -25,15 +26,20 @@ function CreateCommunity() {
     text: string
   } | null>(null)
 
-  function handleBannerChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleBannerChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
       setStatusMessage({ type: "error", text: "Banner image must be under 5 MB." })
       return
     }
-    setBannerPreview(URL.createObjectURL(file))
-    setStatusMessage(null)
+    try {
+      const permanentBanner = await uploadAvatarImage(file, "banner")
+      setBannerPreview(permanentBanner)
+      setStatusMessage(null)
+    } catch (err) {
+      console.warn("Banner upload notice:", err)
+    }
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -86,13 +92,27 @@ function CreateCommunity() {
     setStatusMessage(null)
 
     try {
+      // 1. Create locally in resilient store
       const created = createMockCommunity({
         name: fullName,
         description: description.trim() || "A campus student community on Vertex.",
         whatsapp_link: whatsappLink.trim() || undefined,
         instagram_link: instagramLink.trim() || undefined,
-        image: bannerPreview || undefined,
+        image: bannerPreview || "/default-banner.jpg",
       })
+
+      // 2. Persist to Supabase communities table
+      try {
+        await createCommunityInDb({
+          name: fullName,
+          description: description.trim() || "A campus student community on Vertex.",
+          whatsapp_link: whatsappLink.trim(),
+          instagram_link: instagramLink.trim() || undefined,
+          image: bannerPreview || "/default-banner.jpg",
+        })
+      } catch (dbErr) {
+        console.warn("Supabase create community notice:", dbErr)
+      }
 
       setStatusMessage({
         type: "success",
@@ -101,7 +121,7 @@ function CreateCommunity() {
 
       setTimeout(() => {
         navigate(`/communities/${encodeURIComponent(created.name)}`)
-      }, 900)
+      }, 700)
     } catch (err: any) {
       console.error("Error creating community:", err)
       setStatusMessage({
