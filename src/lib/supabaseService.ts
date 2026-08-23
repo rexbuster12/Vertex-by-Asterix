@@ -384,6 +384,16 @@ export async function createCommunityInDb(comm: SupabaseCommunity) {
     members_count: 1,
   }
 
+  // Cache head community name locally
+  try {
+    const saved = localStorage.getItem("vertex_head_community_names")
+    const list: string[] = saved ? JSON.parse(saved) : []
+    if (!list.includes(comm.name.trim().toLowerCase())) {
+      list.push(comm.name.trim().toLowerCase())
+      localStorage.setItem("vertex_head_community_names", JSON.stringify(list))
+    }
+  } catch { }
+
   const { data, error } = await supabase
     .from("communities")
     .insert(payload)
@@ -705,6 +715,79 @@ export async function fetchUserJoinedCommunityNames(): Promise<string[]> {
       }
     } catch (e) {
       console.warn("Could not fetch user joined communities:", e)
+    }
+  }
+
+  return Array.from(names)
+}
+
+export async function fetchUserHeadCommunityNames(): Promise<string[]> {
+  const user = getCachedUser()
+  const profile = getActiveProfile()
+  const names = new Set<string>()
+
+  // 1. Check local storage cache
+  try {
+    const saved = localStorage.getItem("vertex_head_community_names")
+    if (saved) {
+      const list: string[] = JSON.parse(saved)
+      list.forEach((n) => names.add(n.toLowerCase()))
+    }
+  } catch { }
+
+  // 2. Check local mockStore communities where created_by matches active user or profile
+  try {
+    const rawLocal = localStorage.getItem("vertex_mock_communities")
+    if (rawLocal) {
+      const localList = JSON.parse(rawLocal)
+      if (Array.isArray(localList)) {
+        localList.forEach((c: any) => {
+          if (
+            (profile?.display_name && c.created_by?.name && c.created_by.name.trim().toLowerCase() === profile.display_name.trim().toLowerCase()) ||
+            (user?.id && c.created_by && c.created_by === user.id) ||
+            (user?.name && c.created_by?.name && c.created_by.name.trim().toLowerCase() === user.name.trim().toLowerCase())
+          ) {
+            names.add(c.name.trim().toLowerCase())
+          }
+        })
+      }
+    }
+  } catch { }
+
+  // 3. Check Supabase community_members table for role in ('founder', 'head')
+  if (user?.id) {
+    try {
+      const { data: headRows } = await supabase
+        .from("community_members")
+        .select("community_id, communities(name)")
+        .eq("user_id", user.id)
+        .in("role", ["founder", "head"])
+
+      if (headRows) {
+        for (const row of headRows as any[]) {
+          if (row.communities?.name) {
+            names.add(row.communities.name.trim().toLowerCase())
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch user head communities from members:", e)
+    }
+
+    // 4. Check Supabase communities table for created_by == user.id
+    try {
+      const { data: createdComms } = await supabase
+        .from("communities")
+        .select("name")
+        .eq("created_by", user.id)
+
+      if (createdComms) {
+        for (const c of createdComms) {
+          if (c.name) names.add(c.name.trim().toLowerCase())
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch user created communities:", e)
     }
   }
 

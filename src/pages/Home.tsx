@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router"
 import { Megaphone } from "lucide-react"
 import CommunityCard, { type CommunityCardProps } from "../components/CommunityCard"
 import { getStoredCommunities } from "../lib/mockStore"
-import { fetchCommunitiesFromDb, fetchUserJoinedCommunityNames } from "../lib/supabaseService"
+import { fetchCommunitiesFromDb, fetchUserJoinedCommunityNames, fetchUserHeadCommunityNames } from "../lib/supabaseService"
 import { getActiveUser, getActiveProfile } from "../lib/tempStore"
 import { supabase } from "../lib/supabase"
 
@@ -33,14 +33,27 @@ function Home() {
         setLoading(true)
         const user = getActiveUser()
         const profile = getActiveProfile()
-        const joinedNamesList = await fetchUserJoinedCommunityNames()
+        const [joinedNamesList, headNamesList] = await Promise.all([
+          fetchUserJoinedCommunityNames(),
+          fetchUserHeadCommunityNames(),
+        ])
         const joinedSet = new Set(joinedNamesList.map((n) => n.toLowerCase()))
+        const headSet = new Set(headNamesList.map((n) => n.toLowerCase()))
 
         function checkIsHead(c: any): boolean {
-          if (!user && !profile) return false
+          const cleanName = (c.name || "").trim().toLowerCase()
+          if (headSet.has(cleanName)) return true
           if (c.created_by && user && c.created_by === user.id) return true
           if (c.created_by_name && profile && c.created_by_name.toLowerCase() === profile.display_name?.toLowerCase()) return true
           if (c.created_by?.name && profile && c.created_by.name.toLowerCase() === profile.display_name?.toLowerCase()) return true
+          if (c.created_by?.name && user && c.created_by.name.toLowerCase() === user.name.toLowerCase()) return true
+          if (c.members && Array.isArray(c.members) && profile) {
+            const isMemberHead = c.members.some((m: any) =>
+              (m.name?.toLowerCase() === profile.display_name?.toLowerCase() || (user?.id && m.id === user.id)) &&
+              (m.is_founder || m.is_head || m.role === "founder" || m.role === "head")
+            )
+            if (isMemberHead) return true
+          }
           return false
         }
 

@@ -410,6 +410,15 @@ export function createMockCommunity(payload: {
   const updated = [newCommunity, ...all]
   saveStoredCommunities(updated)
 
+  try {
+    const saved = localStorage.getItem("vertex_head_community_names")
+    const list: string[] = saved ? JSON.parse(saved) : []
+    if (!list.includes(newCommunity.name.trim().toLowerCase())) {
+      list.push(newCommunity.name.trim().toLowerCase())
+      localStorage.setItem("vertex_head_community_names", JSON.stringify(list))
+    }
+  } catch { }
+
   console.log("🚀 [VERTEX COMMUNITY CREATED BY]:", authorName, newCommunity)
 
   // Trigger notification for creation

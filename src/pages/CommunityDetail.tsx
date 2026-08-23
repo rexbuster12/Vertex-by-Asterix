@@ -48,6 +48,7 @@ import {
   joinCommunityInDb,
   leaveCommunityInDb,
   fetchUserJoinedCommunityNames,
+  fetchUserHeadCommunityNames,
 } from "../lib/supabaseService"
 import { supabase } from "../lib/supabase"
 
@@ -68,6 +69,7 @@ function CommunityDetail() {
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false)
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
   const [isReportModalOpen, setIsReportModalOpen] = useState(false)
+  const [headCommunityNames, setHeadCommunityNames] = useState<string[]>([])
 
   // Kick Member Modal State
   const [memberToKick, setMemberToKick] = useState<CommunityMember | null>(null)
@@ -89,8 +91,13 @@ function CommunityDetail() {
       }
 
       const decoded = decodeURIComponent(communityName).trim()
-      const joinedNamesList = await fetchUserJoinedCommunityNames()
+      const [joinedNamesList, headNamesList] = await Promise.all([
+        fetchUserJoinedCommunityNames(),
+        fetchUserHeadCommunityNames(),
+      ])
+      setHeadCommunityNames(headNamesList.map((n) => n.toLowerCase()))
       const joinedSet = new Set(joinedNamesList.map((n) => n.toLowerCase()))
+      const headSet = new Set(headNamesList.map((n) => n.toLowerCase()))
 
       // 1. Check local cache first for instant render
       const localFound = findCommunityByName(decoded)
@@ -98,6 +105,7 @@ function CommunityDetail() {
         setCommunity(localFound)
         setMemberCount(localFound.members_count || localFound.members?.length || 1)
         const isUserHead = Boolean(
+          headSet.has(localFound.name.toLowerCase()) ||
           (activeProfile?.display_name && localFound.created_by?.name && activeProfile.display_name.trim().toLowerCase() === localFound.created_by.name.trim().toLowerCase()) ||
           (activeUser?.id && localFound.created_by && (localFound.created_by as any) === activeUser.id)
         )
@@ -112,6 +120,7 @@ function CommunityDetail() {
           setCommunity(remoteCommunity as MockCommunity)
           setMemberCount(remoteCommunity.members_count || remoteCommunity.members?.length || 1)
           const isUserHead = Boolean(
+            headSet.has(remoteCommunity.name.toLowerCase()) ||
             (activeProfile?.display_name && remoteCommunity.created_by?.name && activeProfile.display_name.trim().toLowerCase() === remoteCommunity.created_by.name.trim().toLowerCase()) ||
             (activeUser?.id && remoteCommunity.created_by && (remoteCommunity.created_by as any) === activeUser.id)
           )
@@ -133,10 +142,18 @@ function CommunityDetail() {
   // Check roles (Head of Community)
   const isHead = Boolean(
     community &&
-    ((activeProfile?.display_name &&
+    (headCommunityNames.includes(community.name.trim().toLowerCase()) ||
+     (activeProfile?.display_name &&
       community.created_by?.name &&
       activeProfile.display_name.trim().toLowerCase() === community.created_by.name.trim().toLowerCase()) ||
-     (activeUser?.id && (community.created_by as any) === activeUser.id))
+     (activeUser?.name &&
+      community.created_by?.name &&
+      activeUser.name.trim().toLowerCase() === community.created_by.name.trim().toLowerCase()) ||
+     (activeUser?.id && (community.created_by as any) === activeUser.id) ||
+     (community.members && Array.isArray(community.members) && activeProfile && community.members.some((m: any) =>
+       (m.name?.toLowerCase() === activeProfile.display_name?.toLowerCase() || (activeUser?.id && m.id === activeUser.id)) &&
+       (m.is_founder || m.is_head || m.role === "founder" || m.role === "head")
+     )))
   )
   const isFounder = isHead // Alias for Head of Community
 
