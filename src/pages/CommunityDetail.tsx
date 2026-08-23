@@ -15,7 +15,6 @@ import {
   Trash2,
   Pencil,
   PlusCircle,
-  ShieldCheck,
   ThumbsUp,
   ThumbsDown,
   UserMinus,
@@ -32,7 +31,6 @@ import {
   updateMockCommunity,
   addCommunityAnnouncement,
   deleteCommunityAnnouncement,
-  setMemberRole,
   removeCommunityMember,
   addCommunityMember,
   transferCommunityFounder,
@@ -332,14 +330,6 @@ function CommunityDetail() {
       if (refreshed) setCommunity(refreshed)
     }
     setAnnouncementToDelete(null)
-  }
-
-  const handleToggleCoLeader = (memberId: string, currentRole?: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation()
-    if (!community) return
-    const newRole = currentRole === "co-leader" ? "member" : "co-leader"
-    const updated = setMemberRole(community.name, memberId, newRole)
-    if (updated) setCommunity(updated)
   }
 
   const handleReaction = async (announcementId: string, reactionType: "like" | "dislike", e?: React.MouseEvent) => {
@@ -932,7 +922,6 @@ function CommunityDetail() {
                             .toUpperCase()
                             .slice(0, 2)
 
-                          const isMemberCoLeader = Boolean(member.role === "co-leader")
                           const isMemberSelf = Boolean(
                             activeProfile?.display_name &&
                             member.name.trim().toLowerCase() === activeProfile.display_name.trim().toLowerCase()
@@ -963,11 +952,6 @@ function CommunityDetail() {
                                     <h4 className="font-sans font-bold text-xs text-[#141c2b] group-hover:text-[#d84c23] transition-colors truncate">
                                       {member.name}
                                     </h4>
-                                    {isMemberCoLeader && (
-                                      <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#2b59ff] text-white rounded-2xs flex items-center gap-0.5 shadow-[1px_1px_0px_#141c2b]">
-                                        <ShieldCheck className="w-2.5 h-2.5" /> Co-Leader
-                                      </span>
-                                    )}
                                   </div>
                                   <p className="font-mono text-[10px] text-[#545e6d] truncate">
                                     {member.branch} • {member.batch}
@@ -975,23 +959,8 @@ function CommunityDetail() {
                                 </div>
                               </div>
 
-                              {/* Co-Leader Promotion / Kick Controls */}
+                              {/* Member Action Controls */}
                               <div className="flex items-center gap-1 flex-shrink-0">
-                                {isFounder && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleToggleCoLeader(member.id, member.role, e)}
-                                    className={`font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-2xs border transition-all cursor-pointer ${
-                                      isMemberCoLeader
-                                        ? "bg-[#eae2d5] text-[#141c2b] border-[#141c2b] hover:bg-white"
-                                        : "bg-[#2b59ff] text-white border-[#141c2b] hover:bg-blue-700 shadow-[1px_1px_0px_#141c2b]"
-                                    }`}
-                                    title={isMemberCoLeader ? "Revoke Co-Leader status" : "Promote to Co-Leader"}
-                                  >
-                                    {isMemberCoLeader ? "Revoke" : "+ Co-Leader"}
-                                  </button>
-                                )}
-
                                 {canRemoveMembers && !isMemberSelf && (
                                   <button
                                     type="button"
