@@ -407,46 +407,43 @@ export async function createCommunityInDb(comm: SupabaseCommunity) {
   return data
 }
 
+export function isUUID(str: string): boolean {
+  if (!str) return false
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidRegex.test(str.trim())
+}
+
 export async function deleteCommunityInDb(communityIdOrName: string) {
+  const clean = decodeURIComponent(communityIdOrName).trim()
   try {
-    await supabase
-      .from("communities")
-      .delete()
-      .or(`id.eq.${communityIdOrName},name.ilike.${communityIdOrName}`)
+    if (isUUID(clean)) {
+      await supabase.from("communities").delete().eq("id", clean)
+    } else {
+      await supabase.from("communities").delete().ilike("name", clean)
+    }
   } catch (err) {
     console.warn("Supabase delete community notice:", err)
   }
 }
 
-export async function fetchCommunityDetailFromDb(nameOrId: string) {
-  const clean = decodeURIComponent(nameOrId).trim()
-  try {
-    const { data: comm, error } = await supabase
-      .from("communities")
-      .select("*")
-      .or(`id.eq.${clean},name.ilike.${clean}`)
-      .maybeSingle()
+async function formatCommunityPayload(comm: any) {
+  // Fetch announcements for this community
+  const { data: annList } = await supabase
+    .from("announcements")
+    .select("*")
+    .eq("community_id", comm.id)
+    .order("created_at", { ascending: false })
 
-    if (error || !comm) {
-      return null
-    }
+  // Fetch founder profile if available
+  let creatorInfo = {
+    name: "Student Leader",
+    branch: "BML Munjal University",
+    batch: "Student",
+    email: undefined as string | undefined,
+  }
 
-    // Fetch announcements for this community
-    const { data: annList } = await supabase
-      .from("announcements")
-      .select("*")
-      .eq("community_id", comm.id)
-      .order("created_at", { ascending: false })
-
-    // Fetch founder profile if available
-    let creatorInfo = {
-      name: "Student Leader",
-      branch: "BML Munjal University",
-      batch: "Student",
-      email: undefined as string | undefined,
-    }
-
-    if (comm.created_by) {
+  if (comm.created_by && isUUID(comm.created_by)) {
+    try {
       const { data: creator } = await supabase
         .from("profiles")
         .select("*")
@@ -460,44 +457,121 @@ export async function fetchCommunityDetailFromDb(nameOrId: string) {
           email: creator.email,
         }
       }
+    } catch (e) {
+      console.warn("Could not fetch creator info:", e)
+    }
+  }
+
+  return {
+    id: comm.id,
+    name: comm.name,
+    description: comm.description,
+    members_count: comm.members_count || 1,
+    whatsapp_link: comm.whatsapp_link,
+    instagram_link: comm.instagram_link,
+    image: comm.image || "/default-banner.jpg",
+    created_at: comm.created_at || new Date().toISOString(),
+    created_by: creatorInfo,
+    announcements: (annList || []).map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      content: a.content,
+      date: a.created_at
+        ? new Date(a.created_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "Today",
+      author: creatorInfo.name,
+      tag: a.tag || "NOTICE",
+      image: a.image,
+      likes: a.likes || 0,
+      dislikes: a.dislikes || 0,
+    })),
+    members: [
+      {
+        id: comm.created_by || "founder",
+        name: creatorInfo.name,
+        branch: creatorInfo.branch,
+        batch: creatorInfo.batch,
+        is_founder: true,
+        role: "founder" as const,
+      },
+    ],
+  }
+}
+
+export async function fetchCommunityDetailFromDb(nameOrId: string) {
+  const clean = decodeURIComponent(nameOrId).trim()
+  if (!clean) return null
+
+  try {
+    // 1. If UUID, query strictly by id
+    if (isUUID(clean)) {
+      const { data: commById } = await supabase
+        .from("communities")
+        .select("*")
+        .eq("id", clean)
+        .maybeSingle()
+      if (commById) return await formatCommunityPayload(commById)
     }
 
-    return {
-      id: comm.id,
-      name: comm.name,
-      description: comm.description,
-      members_count: comm.members_count || 1,
-      whatsapp_link: comm.whatsapp_link,
-      instagram_link: comm.instagram_link,
-      image: comm.image || "/default-banner.jpg",
-      created_at: comm.created_at || new Date().toISOString(),
-      created_by: creatorInfo,
-      announcements: (annList || []).map((a) => ({
-        id: a.id,
-        title: a.title,
-        content: a.content,
-        date: a.created_at ? new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Today",
-        author: creatorInfo.name,
-        tag: a.tag || "NOTICE",
-        image: a.image,
-        likes: a.likes || 0,
-        dislikes: a.dislikes || 0,
-      })),
-      members: [
-        {
-          id: comm.created_by || "founder",
-          name: creatorInfo.name,
-          branch: creatorInfo.branch,
-          batch: creatorInfo.batch,
-          is_founder: true,
-          role: "founder" as const,
-        },
-      ],
+    // 2. Query by case-insensitive name
+    const { data: commByName, error: errName } = await supabase
+      .from("communities")
+      .select("*")
+      .ilike("name", clean)
+      .maybeSingle()
+
+    if (!errName && commByName) {
+      return await formatCommunityPayload(commByName)
+    }
+
+    // 3. Fallback: Exact name match
+    const { data: commExact } = await supabase
+      .from("communities")
+      .select("*")
+      .eq("name", clean)
+      .maybeSingle()
+
+    if (commExact) {
+      return await formatCommunityPayload(commExact)
+    }
+
+    // 4. Fallback: Check with or without " Community" suffix
+    const alt = clean.toLowerCase().endsWith(" community")
+      ? clean.slice(0, -10).trim()
+      : `${clean} Community`
+
+    const { data: commAlt } = await supabase
+      .from("communities")
+      .select("*")
+      .ilike("name", alt)
+      .maybeSingle()
+
+    if (commAlt) {
+      return await formatCommunityPayload(commAlt)
+    }
+
+    // 5. Ultimate Fallback: Fetch all and find in memory
+    const { data: allComms } = await supabase.from("communities").select("*")
+    if (allComms && allComms.length > 0) {
+      const match = allComms.find(
+        (c: any) =>
+          c.name.toLowerCase() === clean.toLowerCase() ||
+          c.name.toLowerCase().includes(clean.toLowerCase()) ||
+          clean.toLowerCase().includes(c.name.toLowerCase())
+      )
+      if (match) {
+        return await formatCommunityPayload(match)
+      }
     }
   } catch (err) {
-    console.warn("Supabase fetch community detail error:", err)
-    return null
+    console.error("Supabase fetch community detail error:", err)
   }
+
+  return null
 }
 
 export async function deleteAnnouncementInDb(id: string) {
