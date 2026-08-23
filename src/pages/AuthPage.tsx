@@ -114,7 +114,15 @@ function AuthPage() {
 
     try {
       if (isSignup) {
-        await signUpStudent(fullEmail, password, cleanPrefix)
+        const { isConfirmationRequired } = await signUpStudent(fullEmail, password, cleanPrefix)
+        if (isConfirmationRequired) {
+          setMessage({
+            type: "info",
+            text: `✉️ Verification link sent to ${fullEmail}! Please check your BMU email inbox and click the confirmation link before logging in.`,
+          })
+          setLoading(false)
+          return
+        }
         setMessage({
           type: "success",
           text: "BMU account created successfully! Setting up your profile...",

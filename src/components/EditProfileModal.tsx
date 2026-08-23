@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react"
 import { screenFields, validateInstagramLink, validateLinkedInLink } from "../lib/contentFilter"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS, MINOR_CLUBS } from "../lib/clubsData"
 import { uploadAvatarImage } from "../lib/supabaseService"
-import { getActiveUser } from "../lib/tempStore"
+import { getActiveUser, extractFirstNameFromBmuEmail } from "../lib/tempStore"
+import { ShieldCheck } from "lucide-react"
 
 export type ProfileData = {
   display_name: string
@@ -53,6 +54,11 @@ const BATCHES = [
 ]
 
 export default function EditProfileModal({ initialData, onSave, onClose }: Props) {
+  const user = getActiveUser()
+  const compulsoryFirstName = extractFirstNameFromBmuEmail(user?.email || user?.username || initialData.username || "")
+  const [middleAndLastName, setMiddleAndLastName] = useState(() =>
+    initialData.display_name.replace(new RegExp(`^${compulsoryFirstName}\\s*`, "i"), "")
+  )
   const [form, setForm] = useState<ProfileData>({ ...initialData })
   const [avatarPreview, setAvatarPreview] = useState<string>(initialData.avatar_url)
   const [error, setError] = useState<string | null>(null)
@@ -103,8 +109,14 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
       return
     }
 
+    const finalDisplayName = `${compulsoryFirstName} ${middleAndLastName.trim()}`.trim()
+    if (!finalDisplayName) {
+      setError("Student name is required.")
+      return
+    }
+
     const screenResult = screenFields([
-      { label: "display name", value: form.display_name },
+      { label: "display name", value: finalDisplayName },
       { label: "bio", value: form.bio },
     ])
     if (!screenResult.ok) {
@@ -117,16 +129,11 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
     const liCheck = validateLinkedInLink(form.linkedin_url)
     if (!liCheck.ok) { setError(liCheck.reason!); return }
 
-    if (!form.display_name.trim()) {
-      setError("Student name is required.")
-      return
-    }
-
     setSaving(true)
 
     try {
       const finalAvatarUrl = avatarPreview || form.avatar_url
-      const saved: ProfileData = { ...form, avatar_url: finalAvatarUrl }
+      const saved: ProfileData = { ...form, display_name: finalDisplayName, avatar_url: finalAvatarUrl }
       onSave(saved)
     } catch (err: any) {
       setError(err.message || "Failed to save student profile.")
@@ -144,82 +151,98 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
     >
       <div
         ref={modalRef}
-        className="w-full sm:max-w-lg bg-[#faf7f2] sm:rounded-lg rounded-t-lg border-2 border-[#141c2b] shadow-[8px_8px_0px_#141c2b] max-h-[92vh] flex flex-col overflow-hidden"
+        className="w-full sm:max-w-lg max-h-[90vh] sm:max-h-[85vh] bg-[#faf7f2] border-t-2 sm:border-2 border-[#141c2b] rounded-t-xl sm:rounded-lg shadow-[6px_6px_0px_#141c2b] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-[#f5f1ea] border-b-2 border-[#141c2b]">
+        <div className="flex items-center justify-between px-6 py-4 border-b-2 border-[#141c2b] bg-[#faf7f2] shrink-0">
           <div>
-            <span className="font-mono text-[10px] font-bold text-[#d84c23] uppercase">
-              STUDENT PROFILE // SETTINGS
+            <span className="font-mono text-[10px] font-bold text-[#d84c23] uppercase tracking-wider block">
+              STUDENT PROFILE // EDIT
             </span>
-            <h2 className="font-serif text-xl font-extrabold text-[#141c2b]">Edit Student Profile</h2>
+            <h2 className="font-serif text-xl font-black text-[#141c2b]">
+              Edit Profile
+            </h2>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-xs border-1.5 border-[#141c2b] bg-[#faf7f2] font-mono font-bold text-sm text-[#141c2b] hover:bg-[#d84c23] hover:text-white transition-colors cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center border-2 border-[#141c2b] bg-[#eae2d5] hover:bg-[#d84c23] hover:text-white rounded-xs font-mono font-bold text-sm transition-colors cursor-pointer shadow-[1px_1px_0px_#141c2b]"
           >
             ✕
           </button>
         </div>
 
         {/* Scrollable Form Body */}
-        <div className="overflow-y-auto flex-1 px-6 py-5">
-          <form id="edit-profile-form" onSubmit={handleSave} className="space-y-4">
-            {/* Profile Photo */}
-            <div className="flex flex-col items-center gap-2.5 pb-3 border-b border-[#d8cebe]">
-              <div className="relative group">
-                {avatarPreview ? (
-                  <img
-                    src={avatarPreview}
-                    alt="Badge photo"
-                    className="w-24 h-24 rounded-xs object-cover border-2 border-[#141c2b] shadow-[3px_3px_0px_#141c2b]"
-                  />
-                ) : (
-                  <div className="w-24 h-24 rounded-xs bg-[#141c2b] flex items-center justify-center font-serif text-2xl font-black text-[#faf7f2] border-2 border-[#141c2b] shadow-[3px_3px_0px_#141c2b]">
-                    {form.display_name?.[0]?.toUpperCase() || "?"}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute inset-0 bg-[#141c2b]/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-mono text-xs font-bold uppercase cursor-pointer"
-                >
-                  Change
-                </button>
-              </div>
+        <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-y-auto p-6 space-y-4">
+          {error && (
+            <div className="p-3 bg-[#fbe8e6] border-2 border-[#d84c23] font-mono text-xs text-[#d84c23] font-bold rounded-xs shadow-[2px_2px_0px_#d84c23]">
+              ⚠ {error}
+            </div>
+          )}
 
+          {/* Section: Profile Info */}
+          <div className="space-y-3">
+            {/* Avatar Picker */}
+            <div className="flex items-center gap-4 pb-3 border-b border-[#d8cebe]">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="relative w-16 h-16 rounded-xs bg-[#eae2d5] border-2 border-[#141c2b] overflow-hidden flex items-center justify-center cursor-pointer shadow-[2px_2px_0px_#141c2b] group hover:border-[#d84c23] transition-colors shrink-0"
+              >
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="font-serif font-black text-xl text-[#141c2b]">
+                    {initialData.display_name.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
+                accept="image/*"
                 onChange={handleAvatarChange}
                 className="hidden"
               />
-
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="font-mono text-xs font-bold text-[#d84c23] hover:underline cursor-pointer uppercase"
+                className="px-3 py-1.5 bg-[#eae2d5] hover:bg-[#141c2b] hover:text-white border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold uppercase transition-all shadow-[2px_2px_0px_#141c2b] cursor-pointer"
               >
                 {avatarPreview ? "Upload new photo" : "Upload Badge Photo *"}
               </button>
             </div>
 
-            {/* Display Name */}
+            {/* Display Name — Compulsory First Name Locked */}
             <div>
-              <label className="block font-mono text-xs font-bold uppercase text-[#141c2b] mb-1">
-                Student Name <span className="text-[#d84c23]">*</span>
-              </label>
-              <input
-                type="text"
-                maxLength={40}
-                required
-                value={form.display_name}
-                onChange={(e) => handleField("display_name", e.target.value)}
-                placeholder="Your full name"
-                className="w-full px-3.5 py-2 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs text-sm text-[#141c2b] font-medium focus:outline-none shadow-[2px_2px_0px_#141c2b]"
-              />
-            </div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-mono text-xs font-bold uppercase text-[#141c2b]">
+                  Student Name <span className="text-[#d84c23]">*</span>
+                </label>
+                <span className="font-mono text-[10px] font-bold text-[#545e6d] uppercase bg-[#eae2d5] px-2 py-0.5 border border-[#141c2b] rounded-2xs flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-[#d84c23]" /> First Name Verified
+                </span>
+              </div>
+
+              <div className="flex items-center bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] overflow-hidden focus-within:ring-2 focus-within:ring-[#141c2b]">
+                <div
+                  className="flex items-center gap-1 px-3 py-2 bg-[#eae2d5] border-r-2 border-[#141c2b] text-sm font-bold text-[#141c2b] select-none shrink-0"
+                  title="First name is permanently locked to your verified BMU student ID"
+                >
+                  <span>{compulsoryFirstName}</span>
+                </div>
+                <input
+                  type="text"
+                  maxLength={40}
+                  value={middleAndLastName}
+                  onChange={(e) => setMiddleAndLastName(e.target.value)}
+                  placeholder="Middle & Last Name (e.g. Meshram)"
+                  className="w-full px-3 py-2 bg-transparent text-sm text-[#141c2b] font-medium focus:outline-none"
+                />
+              </div>
+              <p className="mt-1 font-mono text-[10px] text-[#545e6d]">
+                Full Name: <strong className="text-[#141c2b]">{compulsoryFirstName} {middleAndLastName.trim()}</strong>
+              </p>
+            </div>        
+          </div>
 
             {/* Bio */}
             <div>
@@ -406,7 +429,6 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
               </div>
             )}
           </form>
-        </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-6 py-4 bg-[#f5f1ea] border-t-2 border-[#141c2b]">

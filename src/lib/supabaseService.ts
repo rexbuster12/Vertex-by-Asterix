@@ -169,7 +169,8 @@ export async function signUpStudent(email: string, password: string, username: s
     id: data.user?.id,
   }
   setCachedUser(user)
-  return user
+  const isConfirmationRequired = Boolean(data.user && !data.session)
+  return { user, isConfirmationRequired }
 }
 
 export async function signInStudent(email: string, password: string) {

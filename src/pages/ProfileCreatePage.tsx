@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react"
 import { useNavigate } from "react-router"
 import { type ProfileData } from "../components/EditProfileModal"
-import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
+import { getActiveProfile, setActiveProfile, getActiveUser, extractFirstNameFromBmuEmail } from "../lib/tempStore"
 import { saveStudentProfile, uploadAvatarImage } from "../lib/supabaseService"
 import { supabase } from "../lib/supabase"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS, MINOR_CLUBS } from "../lib/clubsData"
+import { ShieldCheck } from "lucide-react"
 
 const START_YEARS = [2022, 2023, 2024, 2025, 2026]
 const END_YEARS = [2027, 2028, 2029, 2030, 2031]
@@ -35,7 +36,20 @@ export const COURSE_OPTIONS = [
 function ProfileSetup() {
   const navigate = useNavigate()
 
-  const [displayName, setDisplayName] = useState("")
+  const activeUser = getActiveUser()
+  const compulsoryFirstName = extractFirstNameFromBmuEmail(activeUser?.email || activeUser?.username || "")
+
+  const defaultLastName = (() => {
+    if (!activeUser?.username) return ""
+    const parts = activeUser.username.split(".")
+    if (parts.length > 1) {
+      const rest = parts[1].replace(/\d+$/, "").trim()
+      if (rest) return rest.charAt(0).toUpperCase() + rest.slice(1).toLowerCase()
+    }
+    return ""
+  })()
+
+  const [middleAndLastName, setMiddleAndLastName] = useState(defaultLastName)
   const [startYear, setStartYear] = useState<number | "">(START_YEARS[2]) // Default 2024
   const [endYear, setEndYear] = useState<number | "">(END_YEARS[1]) // Default 2028
   const [course, setCourse] = useState("")
@@ -114,7 +128,8 @@ function ProfileSetup() {
     event.preventDefault()
     setError(null)
 
-    if (!displayName.trim()) {
+    const finalDisplayName = `${compulsoryFirstName} ${middleAndLastName.trim()}`.trim()
+    if (!finalDisplayName) {
       setError("Full name is required.")
       return
     }
@@ -137,7 +152,7 @@ function ProfileSetup() {
     const batchStr = course === "Ph. D." ? "Ph.D. Scholar" : `${startYear}\u2013${endYear}` // en-dash
 
     const localProfile: ProfileData = {
-      display_name: displayName.trim(),
+      display_name: finalDisplayName,
       bio: bio.trim(),
       branch: finalBranch,
       batch: batchStr,
@@ -178,31 +193,30 @@ function ProfileSetup() {
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-[#faf7f2] border-2 border-[#141c2b] p-6 sm:p-8 rounded-lg shadow-[6px_6px_0px_#141c2b]">
         {error && (
-          <div className="p-3.5 bg-[#fbe8e6] border-2 border-[#d84c23] font-mono text-xs font-bold text-[#d84c23] rounded-xs shadow-[2px_2px_0px_#d84c23]">
+          <div className="p-3 bg-[#fbe8e6] border-2 border-[#d84c23] text-[#d84c23] rounded-xs text-xs font-mono font-bold shadow-[2px_2px_0px_#d84c23]">
             ⚠ {error}
           </div>
         )}
 
-        {/* Avatar Upload */}
-        <div className="flex flex-col items-center justify-center space-y-3 pb-4 border-b-2 border-[#141c2b]">
+        {/* Profile Picture Upload */}
+        <div className="flex flex-col items-center gap-3 pb-4 border-b-2 border-[#141c2b]">
           <div
             onClick={() => fileRef.current?.click()}
-            className="w-24 h-24 rounded-sm border-2 border-[#141c2b] bg-[#f5f1ea] flex items-center justify-center cursor-pointer shadow-[3px_3px_0px_#141c2b] overflow-hidden group hover:bg-white transition-all"
-            title="Click to upload profile photo"
+            className="w-28 h-28 rounded-xs border-2 border-[#141c2b] bg-[#eae2d5] overflow-hidden flex items-center justify-center cursor-pointer shadow-[3px_3px_0px_#141c2b] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-transform"
           >
             {avatarPreview ? (
-              <img src={avatarPreview} alt="Avatar Preview" className="w-full h-full object-cover" />
+              <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
-              <span className="font-mono text-xs text-[#545e6d] group-hover:text-[#141c2b] text-center p-2">
+              <span className="font-mono text-xs font-bold text-[#545e6d] text-center p-2">
                 + Upload Photo
               </span>
             )}
           </div>
           <input
-            ref={fileRef}
             type="file"
-            accept="image/*"
+            ref={fileRef}
             onChange={handleAvatarChange}
+            accept="image/*"
             className="hidden"
           />
           <span className="font-mono text-[10px] text-[#8892a0]">
@@ -210,18 +224,35 @@ function ProfileSetup() {
           </span>
         </div>
 
-        {/* Display Name */}
+        {/* Display Name — Compulsory First Name Locked */}
         <div>
-          <label className="block font-mono text-xs font-bold uppercase text-[#141c2b] mb-1">
-            Full Name <span className="text-[#d84c23]">*</span>
-          </label>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            required
-            className="w-full px-3.5 py-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs text-sm text-[#141c2b] placeholder-[#8892a0] focus:outline-none focus:bg-white shadow-[2px_2px_0px_#141c2b]"
-          />
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block font-mono text-xs font-bold uppercase text-[#141c2b]">
+              Student Name <span className="text-[#d84c23]">*</span>
+            </label>
+            <span className="font-mono text-[10px] font-bold text-[#545e6d] uppercase bg-[#eae2d5] px-2 py-0.5 border border-[#141c2b] rounded-2xs flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-[#d84c23]" /> First Name Verified
+            </span>
+          </div>
+
+          <div className="flex items-center bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] overflow-hidden focus-within:ring-2 focus-within:ring-[#141c2b]">
+            <div
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-[#eae2d5] border-r-2 border-[#141c2b] text-sm font-bold text-[#141c2b] select-none shrink-0"
+              title="First name is permanently locked to your verified BMU student ID"
+            >
+              <span>{compulsoryFirstName}</span>
+            </div>
+            <input
+              type="text"
+              value={middleAndLastName}
+              onChange={(e) => setMiddleAndLastName(e.target.value)}
+              placeholder="Middle & Last Name (e.g. Meshram)"
+              className="w-full px-3.5 py-2.5 bg-transparent text-sm text-[#141c2b] placeholder-[#8892a0] font-medium focus:outline-none"
+            />
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-[#545e6d]">
+            Full Profile Name: <strong className="text-[#141c2b]">{compulsoryFirstName} {middleAndLastName.trim()}</strong>
+          </p>
         </div>
 
         {/* Course / Branch — Shifted above Batch selection */}

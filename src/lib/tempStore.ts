@@ -21,6 +21,15 @@ export interface ActiveUser {
   id?: string
 }
 
+export function extractFirstNameFromBmuEmail(emailOrUsername?: string): string {
+  if (!emailOrUsername) return "Student"
+  const prefix = emailOrUsername.split("@")[0].trim().toLowerCase()
+  const rawFirst = prefix.split(".")[0].trim()
+  const cleanFirst = rawFirst.replace(/\d+$/, "")
+  if (!cleanFirst) return "Student"
+  return cleanFirst.charAt(0).toUpperCase() + cleanFirst.slice(1).toLowerCase()
+}
+
 function loadInitialProfile(): ActiveProfile | null {
   try {
     const raw = localStorage.getItem("vertex_auth_profile")
