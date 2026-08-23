@@ -5,7 +5,7 @@ import { addNotification } from "../lib/notificationStore"
 import { fetchAllProfiles } from "../lib/supabaseService"
 import { COURSE_OPTIONS } from "./ProfileCreatePage"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS } from "../lib/clubsData"
-import { Ban } from "lucide-react"
+import { Ban, CheckSquare, Square } from "lucide-react"
 
 export type StudentProfile = {
   id: string | number
@@ -53,13 +53,21 @@ const END_YEAR_OPTIONS = [
 function Students() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState("")
+  const [connectionFilter, setConnectionFilter] = useState<"all" | "connected">("all")
   const [selectedBranch, setSelectedBranch] = useState("All Branches")
   const [selectedStartYear, setSelectedStartYear] = useState("All Start Years")
   const [selectedEndYear, setSelectedEndYear] = useState("All End Years")
   const [selectedMajorClub, setSelectedMajorClub] = useState("All Major Clubs & Sports")
   const [selectedCommunityClub, setSelectedCommunityClub] = useState("All Community Clubs")
   const [sportQuery, setSportQuery] = useState("")
-  const [connectedIds, setConnectedIds] = useState<Record<string | number, boolean>>({})
+  const [connectedIds, setConnectedIds] = useState<Record<string | number, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem("vertex_connected_ids")
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
   const [, setBlockedUsers] = useState<string[]>(() => getBlockedUsers())
   const [remoteProfiles, setRemoteProfiles] = useState<StudentProfile[]>([])
 
@@ -89,14 +97,14 @@ function Students() {
           setRemoteProfiles(mapped)
         }
       } catch (err) {
-        console.warn("Could not fetch student profiles:", err)
+        console.warn("Could not load remote profiles:", err)
       }
     }
     loadStudents()
   }, [])
 
   const studentList: StudentProfile[] = useMemo(() => {
-    const list = [...remoteProfiles]
+    const list: StudentProfile[] = [...remoteProfiles]
     if (active && active.display_name) {
       const exists = list.some((s) => s.name.toLowerCase() === active.display_name.toLowerCase())
       if (!exists) {
@@ -145,10 +153,16 @@ function Students() {
     if (isUserBlocked(studentName)) return
 
     const isNowConnected = !connectedIds[id]
-    setConnectedIds((prev) => ({
-      ...prev,
+    const updated = {
+      ...connectedIds,
       [id]: isNowConnected,
-    }))
+    }
+    setConnectedIds(updated)
+    try {
+      localStorage.setItem("vertex_connected_ids", JSON.stringify(updated))
+    } catch (e) {
+      console.warn("Storage notice:", e)
+    }
 
     if (isNowConnected) {
       const targetStudent = studentList.find((s) => s.id === id)
@@ -172,19 +186,29 @@ function Students() {
       setBlockedUsers(getBlockedUsers())
       const target = studentList.find((s) => s.name === studentName)
       if (target) {
-        setConnectedIds((prev) => ({ ...prev, [target.id]: false }))
+        const updated = { ...connectedIds, [target.id]: false }
+        setConnectedIds(updated)
+        localStorage.setItem("vertex_connected_ids", JSON.stringify(updated))
       }
     }
   }
 
+  const totalCount = studentList.length
+  const connectedCount = useMemo(() => {
+    return studentList.filter((s) => !!connectedIds[s.id]).length
+  }, [studentList, connectedIds])
+
   const filteredStudents = useMemo(() => {
     return studentList.filter((student) => {
+      if (connectionFilter === "connected" && !connectedIds[student.id]) {
+        return false
+      }
+
       const matchSearch =
         searchQuery.trim() === "" ||
         student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         student.bio.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (student.username && student.username.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        student.interests.some((i) => i.toLowerCase().includes(searchQuery.toLowerCase()))
+        (student.username && student.username.toLowerCase().includes(searchQuery.toLowerCase()))
 
       const matchBranch =
         selectedBranch === "All Branches" || student.branch === selectedBranch
@@ -216,7 +240,7 @@ function Students() {
 
       return matchSearch && matchBranch && matchStartYear && matchEndYear && matchMajorClub && matchCommunityClub && matchSport
     })
-  }, [studentList, searchQuery, selectedBranch, selectedStartYear, selectedEndYear, selectedMajorClub, selectedCommunityClub, sportQuery])
+  }, [studentList, searchQuery, selectedBranch, selectedStartYear, selectedEndYear, selectedMajorClub, selectedCommunityClub, sportQuery, connectionFilter, connectedIds])
 
   return (
     <div className="editorial-shell space-y-6">
@@ -333,9 +357,49 @@ function Students() {
           </div>
         </div>
 
+        {/* Row 3: Connection Status Filter */}
+        <div className="flex items-center gap-2 pt-2 border-t border-[#d8cebe] flex-wrap">
+          <span className="font-mono text-[11px] font-bold uppercase text-[#141c2b] mr-1">
+            PEER STATUS:
+          </span>
+          <button
+            type="button"
+            onClick={() => setConnectionFilter("all")}
+            className={`px-3 py-1.5 rounded-xs font-mono text-xs font-bold uppercase border-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+              connectionFilter === "all"
+                ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[1.5px_1.5px_0px_#d84c23]"
+                : "bg-[#f5f1ea] text-[#141c2b] border-[#141c2b] hover:bg-white"
+            }`}
+          >
+            {connectionFilter === "all" ? (
+              <CheckSquare className="w-3.5 h-3.5 text-[#d84c23]" />
+            ) : (
+              <Square className="w-3.5 h-3.5 text-[#8892a0]" />
+            )}
+            <span>All Students ({totalCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setConnectionFilter("connected")}
+            className={`px-3 py-1.5 rounded-xs font-mono text-xs font-bold uppercase border-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+              connectionFilter === "connected"
+                ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[1.5px_1.5px_0px_#d84c23]"
+                : "bg-[#f5f1ea] text-[#141c2b] border-[#141c2b] hover:bg-white"
+            }`}
+          >
+            {connectionFilter === "connected" ? (
+              <CheckSquare className="w-3.5 h-3.5 text-[#d84c23]" />
+            ) : (
+              <Square className="w-3.5 h-3.5 text-[#8892a0]" />
+            )}
+            <span>Connected Only ({connectedCount})</span>
+          </button>
+        </div>
+
         <div className="flex items-center justify-between text-xs font-mono text-[#545e6d] pt-1">
           <span>SHOWING <b className="text-[#141c2b]">{filteredStudents.length}</b> REGISTERED STUDENTS</span>
-          {(selectedBranch !== "All Branches" || selectedStartYear !== "All Start Years" || selectedEndYear !== "All End Years" || selectedMajorClub !== "All Major Clubs & Sports" || selectedCommunityClub !== "All Community Clubs" || sportQuery || searchQuery) && (
+          {(selectedBranch !== "All Branches" || selectedStartYear !== "All Start Years" || selectedEndYear !== "All End Years" || selectedMajorClub !== "All Major Clubs & Sports" || selectedCommunityClub !== "All Community Clubs" || sportQuery || searchQuery || connectionFilter !== "all") && (
             <button
               onClick={() => {
                 setSelectedBranch("All Branches")
@@ -345,6 +409,7 @@ function Students() {
                 setSelectedCommunityClub("All Community Clubs")
                 setSportQuery("")
                 setSearchQuery("")
+                setConnectionFilter("all")
               }}
               className="text-[#d84c23] hover:underline uppercase font-bold cursor-pointer"
             >

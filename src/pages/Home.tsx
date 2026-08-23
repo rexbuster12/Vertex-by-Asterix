@@ -320,12 +320,25 @@ function Home() {
       </section>
 
       <section className="zine-discovery">
-        <div className="zine-discovery-header">
+        <div className="zine-discovery-header flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <p className="zine-kicker">VERTEX EXPLORER // ACTIVE COMMUNITIES</p>
             <h2>Trending Campus Communities</h2>
           </div>
-          <Link to="/communities">Explore All ({displayList.length}+) →</Link>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <Link
+              to="/communities?filter=joined"
+              className="font-mono text-xs font-bold text-[#141c2b] bg-[#eae2d5] border border-[#141c2b] px-3 py-1.5 rounded-xs hover:bg-[#d84c23] hover:text-white transition-all shadow-[1.5px_1.5px_0px_#141c2b]"
+            >
+              ✓ Joined Communities
+            </Link>
+            <Link
+              to="/communities?filter=all"
+              className="font-mono text-xs font-bold text-white bg-[#141c2b] border border-[#141c2b] px-3 py-1.5 rounded-xs hover:bg-[#d84c23] transition-all shadow-[1.5px_1.5px_0px_#141c2b]"
+            >
+              Explore All →
+            </Link>
+          </div>
         </div>
 
         {loading ? (

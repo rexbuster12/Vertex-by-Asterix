@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react"
 import { Link, useSearchParams, useNavigate } from "react-router"
-import { LogOut, Users, ExternalLink } from "lucide-react"
+import { LogOut, Users, ExternalLink, QrCode, Copy, Check, UserPlus, Share2 } from "lucide-react"
+import { QRCodeSVG } from "qrcode.react"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
 import { saveStudentProfile, signOutStudent, fetchCommunitiesFromDb } from "../lib/supabaseService"
 import { getStoredCommunities } from "../lib/mockStore"
+import { addNotification } from "../lib/notificationStore"
 import { supabase } from "../lib/supabase"
 
 function Profile() {
@@ -15,6 +17,10 @@ function Profile() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [joinedCommunities, setJoinedCommunities] = useState<any[]>([])
+  const [copied, setCopied] = useState(false)
+  const [isPeerConnected, setIsPeerConnected] = useState(false)
+
+  const active = getActiveProfile()
 
   useEffect(() => {
     async function loadProfile() {
@@ -29,6 +35,7 @@ function Profile() {
             ) {
               setProfile(parsed)
               setIsPreviewing(true)
+              checkConnectedStatus(parsed.username || parsed.display_name)
               return
             }
           }
@@ -44,12 +51,12 @@ function Profile() {
           if (remote) {
             setProfile(remote)
             setIsPreviewing(true)
+            checkConnectedStatus(remote.username || remote.display_name || remote.id)
             return
           }
         }
 
         // Read active profile
-        const active = getActiveProfile()
         if (active) {
           setProfile(active)
           setIsPreviewing(false)
@@ -59,6 +66,18 @@ function Profile() {
         }
       } catch {
         setProfile(null)
+      }
+    }
+
+    function checkConnectedStatus(idOrName: string) {
+      try {
+        const saved = localStorage.getItem("vertex_connected_ids")
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          setIsPeerConnected(!!parsed[idOrName])
+        }
+      } catch {
+        setIsPeerConnected(false)
       }
     }
 
@@ -119,6 +138,43 @@ function Profile() {
       console.warn("Supabase profile update notice:", err)
     }
     setIsEditOpen(false)
+  }
+
+  const profileIdentifier = profile?.username || profile?.display_name || "student"
+  const liveProfileUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/profile?preview=${encodeURIComponent(profileIdentifier)}`
+    : `https://vertex-by-asterix.vercel.app/profile?preview=${encodeURIComponent(profileIdentifier)}`
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(liveProfileUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleTogglePeerConnect = () => {
+    if (!profile) return
+    const idOrName = profile.username || profile.display_name
+    const nextState = !isPeerConnected
+    setIsPeerConnected(nextState)
+
+    try {
+      const saved = localStorage.getItem("vertex_connected_ids")
+      const current = saved ? JSON.parse(saved) : {}
+      current[idOrName] = nextState
+      localStorage.setItem("vertex_connected_ids", JSON.stringify(current))
+    } catch (e) {
+      console.warn("Connection store notice:", e)
+    }
+
+    if (nextState) {
+      addNotification({
+        type: "connection_received",
+        title: `Connected with ${profile.display_name}`,
+        message: `You connected with ${profile.display_name} on Vertex.`,
+        linkUrl: `/students`,
+        sourceName: profile.display_name,
+      })
+    }
   }
 
   const initials =
@@ -267,8 +323,8 @@ function Profile() {
               )}
             </div>
 
-            {/* Actions: Edit Profile & Log Out */}
-            {!isPreviewing && (
+            {/* Actions: Edit Profile, Log Out, or Connect */}
+            {!isPreviewing ? (
               <div className="flex flex-col gap-2.5 self-start sm:self-center">
                 <button
                   onClick={() => setIsEditOpen(true)}
@@ -285,6 +341,27 @@ function Profile() {
                   <span>Log Out</span>
                 </button>
               </div>
+            ) : (
+              <div className="flex flex-col gap-2.5 self-start sm:self-center">
+                <button
+                  onClick={handleTogglePeerConnect}
+                  className={`text-xs font-mono font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm border-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-[2px_2px_0px_#141c2b] ${
+                    isPeerConnected
+                      ? "bg-[#22c55e] text-white border-[#141c2b]"
+                      : "bg-[#d84c23] hover:bg-[#b83d1b] text-white border-[#141c2b]"
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>{isPeerConnected ? "✓ Connected" : "Connect +"}</span>
+                </button>
+                <Link
+                  to="/students"
+                  className="secondary-action text-xs font-mono text-center"
+                  style={{ padding: "0.55rem 1rem" }}
+                >
+                  ← Directory
+                </Link>
+              </div>
             )}
           </div>
 
@@ -295,12 +372,81 @@ function Profile() {
               <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Joined Communities</p>
             </div>
             <div>
-              <p className="font-serif text-2xl font-black text-[#d84c23]">0</p>
+              <p className="font-serif text-2xl font-black text-[#d84c23]">
+                {isPreviewing ? (isPeerConnected ? 1 : 0) : 0}
+              </p>
               <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Campus Connections</p>
             </div>
             <div>
               <p className="font-serif text-lg font-bold text-[#141c2b] pt-1">Active</p>
               <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Student Status</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── DIGITAL VERTEX CONNECT QR PASS ──────────── */}
+        <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 sm:p-7 shadow-[5px_5px_0px_#141c2b] space-y-4">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex flex-col sm:flex-row items-center gap-5 text-center sm:text-left">
+              {/* QR Code Container */}
+              <div className="p-3 bg-white border-2 border-[#141c2b] rounded-sm shadow-[3px_3px_0px_#141c2b] flex-shrink-0">
+                <QRCodeSVG
+                  value={liveProfileUrl}
+                  size={120}
+                  level="H"
+                  includeMargin={false}
+                  fgColor="#141c2b"
+                  bgColor="#ffffff"
+                />
+              </div>
+
+              {/* QR Pass Details */}
+              <div className="space-y-1.5 max-w-md">
+                <div className="flex items-center justify-center sm:justify-start gap-1.5 font-mono text-xs font-bold text-[#d84c23] uppercase">
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Digital Vertex QR Pass</span>
+                </div>
+                <h3 className="font-serif text-xl font-bold text-[#141c2b]">
+                  {isPreviewing
+                    ? `Scan to Connect with ${profile.display_name}`
+                    : "Scan to Connect With Me"}
+                </h3>
+                <p className="text-xs text-[#545e6d] leading-relaxed">
+                  Open your smartphone camera and point at this QR code to instantly open this profile and connect on Vertex.
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 w-full sm:w-auto flex-shrink-0">
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="primary-action text-xs font-mono flex items-center justify-center gap-1.5 cursor-pointer"
+                style={{ padding: "0.6rem 1.1rem" }}
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? "Link Copied! ✓" : "Copy Profile Link"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: `${profile.display_name} on Vertex`,
+                      text: `Connect with ${profile.display_name} on Vertex BMU`,
+                      url: liveProfileUrl,
+                    }).catch(() => {})
+                  } else {
+                    handleCopyLink()
+                  }
+                }}
+                className="secondary-action text-xs font-mono flex items-center justify-center gap-1.5 cursor-pointer"
+                style={{ padding: "0.6rem 1.1rem" }}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share Pass</span>
+              </button>
             </div>
           </div>
         </div>
