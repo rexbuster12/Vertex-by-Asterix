@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react"
 import { Link, useSearchParams, useNavigate } from "react-router"
-import { LogOut } from "lucide-react"
+import { LogOut, Users, ExternalLink } from "lucide-react"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
-import { getActiveProfile, setActiveProfile } from "../lib/tempStore"
-import { saveStudentProfile, signOutStudent } from "../lib/supabaseService"
+import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
+import { saveStudentProfile, signOutStudent, fetchCommunitiesFromDb } from "../lib/supabaseService"
+import { getStoredCommunities } from "../lib/mockStore"
 import { supabase } from "../lib/supabase"
 
 function Profile() {
@@ -12,10 +13,8 @@ function Profile() {
   const previewParam = searchParams.get("preview")
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
-  const [interests, setInterests] = useState<string[]>([])
-  const [newInterest, setNewInterest] = useState("")
-  const [isAddingInterest, setIsAddingInterest] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
+  const [joinedCommunities, setJoinedCommunities] = useState<any[]>([])
 
   useEffect(() => {
     async function loadProfile() {
@@ -30,7 +29,6 @@ function Profile() {
             ) {
               setProfile(parsed)
               setIsPreviewing(true)
-              setInterests([])
               return
             }
           }
@@ -46,7 +44,6 @@ function Profile() {
           if (remote) {
             setProfile(remote)
             setIsPreviewing(true)
-            setInterests([])
             return
           }
         }
@@ -56,11 +53,9 @@ function Profile() {
         if (active) {
           setProfile(active)
           setIsPreviewing(false)
-          setInterests([])
         } else {
           setProfile(null)
           setIsPreviewing(false)
-          setInterests([])
         }
       } catch {
         setProfile(null)
@@ -69,6 +64,46 @@ function Profile() {
 
     loadProfile()
   }, [previewParam])
+
+  useEffect(() => {
+    async function loadJoinedCommunities() {
+      if (!profile) return
+      try {
+        const user = getActiveUser()
+        const allLocal = getStoredCommunities()
+
+        // Filter local communities created by this student or where member
+        const myLocal = allLocal.filter(
+          (c) =>
+            c.created_by?.name?.toLowerCase() === profile.display_name?.toLowerCase() ||
+            c.members?.some((m) => m.name?.toLowerCase() === profile.display_name?.toLowerCase())
+        )
+
+        // Filter remote communities
+        const remote = await fetchCommunitiesFromDb()
+        const myRemote = (remote || []).filter(
+          (c: any) =>
+            c.created_by === user?.id ||
+            c.name?.toLowerCase() === "chess community" ||
+            c.created_by_name?.toLowerCase() === profile.display_name?.toLowerCase()
+        )
+
+        const seen = new Set<string>()
+        const combined = [...myRemote, ...myLocal].filter((c) => {
+          const k = c.name.trim().toLowerCase()
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
+
+        setJoinedCommunities(combined)
+      } catch (err) {
+        console.warn("Could not load joined communities:", err)
+      }
+    }
+
+    loadJoinedCommunities()
+  }, [profile])
 
   async function handleLogout() {
     await signOutStudent()
@@ -84,19 +119,6 @@ function Profile() {
       console.warn("Supabase profile update notice:", err)
     }
     setIsEditOpen(false)
-  }
-
-  const handleAddInterest = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (newInterest.trim() && !interests.includes(newInterest.trim())) {
-      setInterests([...interests, newInterest.trim()])
-      setNewInterest("")
-      setIsAddingInterest(false)
-    }
-  }
-
-  const handleRemoveInterest = (item: string) => {
-    setInterests(interests.filter((i) => i !== item))
   }
 
   const initials =
@@ -118,7 +140,7 @@ function Profile() {
             No student profile found
           </h2>
           <p className="text-sm text-[#545e6d] max-w-xl mx-auto">
-            You are starting fresh from the beginning. Create your student profile to browse and join communities.
+            Create your student profile to browse and join campus communities.
           </p>
           <div className="flex justify-center gap-3 pt-4">
             <Link to="/profile/create" className="primary-action" style={{ padding: "0.65rem 1.25rem" }}>
@@ -245,7 +267,7 @@ function Profile() {
               )}
             </div>
 
-            {/* Actions */}
+            {/* Actions: Edit Profile & Log Out */}
             {!isPreviewing && (
               <div className="flex flex-col gap-2.5 self-start sm:self-center">
                 <button
@@ -255,13 +277,6 @@ function Profile() {
                 >
                   ✏ Edit Profile
                 </button>
-                <Link
-                  to="/create-community"
-                  className="secondary-action text-xs font-mono"
-                  style={{ padding: "0.65rem 1.25rem", textAlign: "center" }}
-                >
-                  + Create Community
-                </Link>
                 <button
                   onClick={handleLogout}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-mono font-bold uppercase tracking-[0.05em] text-[#d84c23] bg-[#fbe8e6] hover:bg-[#d84c23] hover:text-white border-2 border-[#141c2b] rounded-sm shadow-[2px_2px_0px_#141c2b] transition-all cursor-pointer"
@@ -273,103 +288,104 @@ function Profile() {
             )}
           </div>
 
-          {/* Clean Real Stats Bar: 0 Initial Joined Communities, 0 Connections, 0 Interests */}
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t-2 border-[#141c2b] max-w-md">
+          {/* Clean Real Stats Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-4 border-t-2 border-[#141c2b] max-w-md">
             <div>
-              <p className="font-serif text-2xl font-black text-[#141c2b]">0</p>
+              <p className="font-serif text-2xl font-black text-[#141c2b]">{joinedCommunities.length}</p>
               <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Joined Communities</p>
             </div>
             <div>
               <p className="font-serif text-2xl font-black text-[#d84c23]">0</p>
-              <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Connections</p>
+              <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Campus Connections</p>
             </div>
             <div>
-              <p className="font-serif text-2xl font-black text-[#141c2b]">{interests.length}</p>
-              <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Interests</p>
+              <p className="font-serif text-lg font-bold text-[#141c2b] pt-1">Active</p>
+              <p className="font-mono text-[10px] font-bold text-[#8892a0] uppercase">Student Status</p>
             </div>
           </div>
         </div>
 
-        {/* ── 2-COLUMN SECTION: JOINED COMMUNITIES & INTERESTS ──────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          {/* Joined Communities (7 cols) */}
-          <div className="md:col-span-7 bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 shadow-[4px_4px_0px_#141c2b] space-y-4">
-            <div className="flex items-center justify-between border-b border-[#d8cebe] pb-2">
-              <h2 className="font-serif text-xl font-bold text-[#141c2b]">
+        {/* ── JOINED COMMUNITIES SECTION ──────────── */}
+        <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 sm:p-8 shadow-[5px_5px_0px_#141c2b] space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-[#141c2b] pb-3">
+            <div>
+              <h2 className="font-serif text-2xl font-extrabold text-[#141c2b]">
                 Joined Communities
               </h2>
-              <Link to="/communities" className="font-mono text-xs font-bold text-[#d84c23] hover:underline">
-                Explore Communities →
-              </Link>
-            </div>
-
-            <div className="space-y-3">
-              <div className="text-center py-8 px-4 bg-[#faf7f2] border-2 border-dashed border-[#141c2b] rounded-lg space-y-2">
-                <p className="font-serif font-bold text-base text-[#141c2b]">No communities joined yet</p>
-                <p className="text-xs text-[#545e6d]">Browse campus communities and join the ones that match your interests.</p>
-                <div className="pt-2">
-                  <Link to="/communities" className="primary-action text-xs font-mono" style={{ padding: "0.5rem 1rem" }}>
-                    Explore Communities →
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Interests & Skills (5 cols) */}
-          <div className="md:col-span-5 bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 shadow-[4px_4px_0px_#141c2b] space-y-4">
-            <div className="flex items-center justify-between border-b border-[#d8cebe] pb-2">
-              <h2 className="font-serif text-xl font-bold text-[#141c2b]">
-                Interests & Tags
-              </h2>
-              <button
-                onClick={() => setIsAddingInterest(!isAddingInterest)}
-                className="font-mono text-xs font-bold text-[#d84c23] hover:underline cursor-pointer"
-              >
-                {isAddingInterest ? "Cancel [✕]" : "+ Add Tag"}
-              </button>
-            </div>
-
-            {isAddingInterest && (
-              <form onSubmit={handleAddInterest} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. AI, Web3, Chess"
-                  value={newInterest}
-                  onChange={(e) => setNewInterest(e.target.value)}
-                  className="flex-1 px-3 py-1.5 bg-[#f5f1ea] border border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] focus:outline-none"
-                  autoFocus
-                />
-                <button type="submit" className="primary-action text-xs" style={{ padding: "0.4rem 0.8rem" }}>
-                  Add
-                </button>
-              </form>
-            )}
-
-            {interests.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {interests.map((interest) => (
-                  <span
-                    key={interest}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#f5f1ea] border border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] shadow-[1px_1px_0px_#141c2b]"
-                  >
-                    <span>#{interest}</span>
-                    <button
-                      onClick={() => handleRemoveInterest(interest)}
-                      className="text-[#8892a0] hover:text-[#d84c23] ml-1 cursor-pointer"
-                      title="Remove"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="font-mono text-xs text-[#8892a0] italic py-2">
-                No tags added yet. Click "+ Add Tag" to add your skills and interests.
+              <p className="text-xs text-[#545e6d] font-mono mt-0.5">
+                Campus hubs, cohorts, and student organizations you are affiliated with.
               </p>
-            )}
+            </div>
+            <Link
+              to="/communities"
+              className="font-mono text-xs font-bold text-[#d84c23] hover:text-[#141c2b] uppercase tracking-wider flex items-center gap-1"
+            >
+              <span>Explore All Communities →</span>
+            </Link>
           </div>
+
+          {joinedCommunities.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+              {joinedCommunities.map((comm) => (
+                <div
+                  key={comm.id || comm.name}
+                  onClick={() => navigate(`/communities/${encodeURIComponent(comm.name)}`)}
+                  className="bg-[#f5f1ea] border-2 border-[#141c2b] rounded-lg overflow-hidden shadow-[3px_3px_0px_#141c2b] hover:shadow-[5px_5px_0px_#d84c23] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all cursor-pointer flex flex-col"
+                >
+                  {/* Banner */}
+                  <div className="h-28 w-full bg-[#141c2b] relative overflow-hidden border-b-2 border-[#141c2b]">
+                    <img
+                      src={comm.image || "/default-banner.jpg"}
+                      alt={comm.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute top-2 right-2 font-mono text-[9.5px] font-black uppercase bg-[#faf7f2] text-[#141c2b] border border-[#141c2b] px-2 py-0.5 rounded-2xs shadow-[1px_1px_0px_#141c2b]">
+                      Member
+                    </span>
+                  </div>
+
+                  {/* Info */}
+                  <div className="p-4 flex-1 flex flex-col justify-between space-y-2.5">
+                    <div>
+                      <h3 className="font-serif font-bold text-base text-[#141c2b] truncate">
+                        {comm.name}
+                      </h3>
+                      <p className="text-xs text-[#545e6d] line-clamp-2 mt-1 leading-relaxed">
+                        {comm.description || "A campus student community on Vertex."}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-[#d8cebe] flex items-center justify-between font-mono text-xs">
+                      <span className="text-[#545e6d] flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5" />
+                        <span>{comm.members_count || 1} members</span>
+                      </span>
+                      <span className="font-bold text-[#d84c23] flex items-center gap-0.5 group-hover:underline">
+                        Open <ExternalLink className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-10 px-4 bg-[#faf7f2] border-2 border-dashed border-[#141c2b] rounded-lg space-y-3">
+              <div className="w-12 h-12 bg-[#eae2d5] border-2 border-[#141c2b] rounded-full flex items-center justify-center mx-auto text-[#141c2b]">
+                <Users className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-serif font-bold text-lg text-[#141c2b]">No communities joined yet</p>
+                <p className="text-xs text-[#545e6d] max-w-sm mx-auto">
+                  Browse campus student clubs, societies, and cohorts to start connecting.
+                </p>
+              </div>
+              <div className="pt-1">
+                <Link to="/communities" className="primary-action text-xs font-mono" style={{ padding: "0.6rem 1.25rem" }}>
+                  Explore Communities →
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

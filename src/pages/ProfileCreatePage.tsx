@@ -172,7 +172,7 @@ function ProfileSetup() {
           Complete Your Student Profile
         </h1>
         <p className="text-sm text-[#545e6d] max-w-md mx-auto">
-          Set up your university profile to join communities, discover peers, and showcase your interests.
+          Set up your vertex profile to join communities, discover peers, and showcase your interests.
         </p>
       </div>
 
