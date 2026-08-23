@@ -37,7 +37,8 @@ import {
 } from "../lib/mockStore"
 import { getActiveProfile } from "../lib/tempStore"
 import { addNotification } from "../lib/notificationStore"
-import { fetchCommunityDetailFromDb, deleteCommunityInDb } from "../lib/supabaseService"
+import { fetchCommunityDetailFromDb, deleteCommunityInDb, deleteAnnouncementInDb } from "../lib/supabaseService"
+import { supabase } from "../lib/supabase"
 
 const FALLBACK_COVER = "/default-banner.jpg"
 
@@ -92,7 +93,7 @@ function CommunityDetail() {
     loadCommunity()
   }, [communityName])
 
-  const handleToggleJoin = () => {
+  const handleToggleJoin = async () => {
     if (joined) {
       setJoined(false)
       setMemberCount((prev) => Math.max(1, prev - 1))
@@ -111,7 +112,7 @@ function CommunityDetail() {
     }
   }
 
-  const handlePublishAnnouncement = (payload: {
+  const handlePublishAnnouncement = async (payload: {
     title: string
     content: string
     tag: string
@@ -119,17 +120,52 @@ function CommunityDetail() {
   }) => {
     if (!community) return
     const created = addCommunityAnnouncement(community.name, payload)
-    if (created) {
+
+    // Persist to Supabase announcements table
+    try {
+      const { data: dbComm } = await supabase
+        .from("communities")
+        .select("id")
+        .ilike("name", community.name)
+        .maybeSingle()
+
+      if (dbComm?.id) {
+        await supabase.from("announcements").insert({
+          community_id: dbComm.id,
+          title: payload.title,
+          content: payload.content,
+          tag: payload.tag,
+          image: payload.image || null,
+          likes: 0,
+          dislikes: 0,
+        })
+      }
+    } catch (err) {
+      console.warn("Supabase post announcement notice:", err)
+    }
+
+    // Refresh live
+    const remote = await fetchCommunityDetailFromDb(community.name)
+    if (remote) {
+      setCommunity(remote as MockCommunity)
+    } else if (created) {
       const refreshed = findCommunityByName(community.name)
       if (refreshed) setCommunity(refreshed)
     }
   }
 
-  const handleDeleteAnnouncement = () => {
+  const handleDeleteAnnouncement = async () => {
     if (!community || !announcementToDelete) return
     deleteCommunityAnnouncement(community.name, announcementToDelete)
-    const refreshed = findCommunityByName(community.name)
-    if (refreshed) setCommunity(refreshed)
+    await deleteAnnouncementInDb(announcementToDelete)
+
+    const remote = await fetchCommunityDetailFromDb(community.name)
+    if (remote) {
+      setCommunity(remote as MockCommunity)
+    } else {
+      const refreshed = findCommunityByName(community.name)
+      if (refreshed) setCommunity(refreshed)
+    }
     setAnnouncementToDelete(null)
   }
 
@@ -151,12 +187,23 @@ function CommunityDetail() {
     }
   }
 
-  const handleReaction = (announcementId: string, reactionType: "like" | "dislike", e?: React.MouseEvent) => {
+  const handleReaction = async (announcementId: string, reactionType: "like" | "dislike", e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
     if (!community) return
     const userId = activeProfile?.display_name || "active-user"
     const updated = toggleAnnouncementReaction(community.name, announcementId, userId, reactionType)
     if (updated) setCommunity(updated)
+
+    try {
+      const currentLikes = updated?.announcements?.find((a) => a.id === announcementId)?.likes || 0
+      const currentDislikes = updated?.announcements?.find((a) => a.id === announcementId)?.dislikes || 0
+      await supabase
+        .from("announcements")
+        .update({ likes: currentLikes, dislikes: currentDislikes })
+        .eq("id", announcementId)
+    } catch (err) {
+      console.warn("Supabase reaction sync notice:", err)
+    }
   }
 
   const handleShare = () => {
@@ -172,7 +219,7 @@ function CommunityDetail() {
     navigate("/communities")
   }
 
-  const handleSaveCommunity = (updates: {
+  const handleSaveCommunity = async (updates: {
     name: string
     description: string
     image?: string
@@ -187,6 +234,16 @@ function CommunityDetail() {
       if (updated.name !== community.name) {
         navigate(`/communities/${encodeURIComponent(updated.name)}`, { replace: true })
       }
+    }
+
+    // Persist edits to Supabase
+    try {
+      await supabase
+        .from("communities")
+        .update(updates)
+        .or(`id.eq.${community.id || community.name},name.ilike.${community.name}`)
+    } catch (err) {
+      console.warn("Supabase update community notice:", err)
     }
   }
 

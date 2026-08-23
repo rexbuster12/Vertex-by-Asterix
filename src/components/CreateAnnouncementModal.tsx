@@ -1,6 +1,7 @@
 import { useState, useRef } from "react"
 import { X, Image as ImageIcon, Sparkles, Megaphone } from "lucide-react"
 import { screenFields } from "../lib/contentFilter"
+import { uploadAvatarImage } from "../lib/supabaseService"
 
 interface CreateAnnouncementModalProps {
   communityName: string
@@ -39,15 +40,20 @@ function CreateAnnouncementModal({
 
   if (!isOpen) return null
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
       setErrorMessage("Announcement image must be under 5 MB.")
       return
     }
-    setImagePreview(URL.createObjectURL(file))
-    setErrorMessage(null)
+    try {
+      const permanentImg = await uploadAvatarImage(file, "announcement")
+      setImagePreview(permanentImg)
+      setErrorMessage(null)
+    } catch (err) {
+      console.warn("Announcement image upload notice:", err)
+    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {

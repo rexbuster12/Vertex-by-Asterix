@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react"
-import { Link } from "react-router"
+import { useState, useMemo, useEffect } from "react"
+import { Link, useNavigate } from "react-router"
 import { getActiveProfile, blockUser, unblockUser, isUserBlocked, getBlockedUsers } from "../lib/tempStore"
 import { addNotification } from "../lib/notificationStore"
+import { fetchAllProfiles } from "../lib/supabaseService"
 import { COURSE_OPTIONS } from "./ProfileCreatePage"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS } from "../lib/clubsData"
 import { Ban } from "lucide-react"
@@ -50,6 +51,7 @@ const END_YEAR_OPTIONS = [
 ]
 
 function Students() {
+  const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedBranch, setSelectedBranch] = useState("All Branches")
   const [selectedStartYear, setSelectedStartYear] = useState("All Start Years")
@@ -59,29 +61,85 @@ function Students() {
   const [sportQuery, setSportQuery] = useState("")
   const [connectedIds, setConnectedIds] = useState<Record<string | number, boolean>>({})
   const [, setBlockedUsers] = useState<string[]>(() => getBlockedUsers())
+  const [remoteProfiles, setRemoteProfiles] = useState<StudentProfile[]>([])
 
   const active = getActiveProfile()
+
+  useEffect(() => {
+    async function loadStudents() {
+      try {
+        const all = await fetchAllProfiles()
+        if (all && all.length > 0) {
+          const mapped: StudentProfile[] = all.map((p: any) => ({
+            id: p.id || p.username || p.email,
+            name: p.display_name || p.username,
+            username: p.username,
+            branch: p.branch || "BML Munjal University",
+            batchYear: p.batch || "2024–2028",
+            bio: p.bio || "Student member on Vertex Campus.",
+            communities: [],
+            interests: [],
+            avatarPhoto: p.avatar_url,
+            major_club: p.major_club,
+            major_sport: p.major_sport,
+            minor_club: p.minor_club,
+            minor_sport: p.minor_sport,
+            community_club: p.community_club,
+          }))
+          setRemoteProfiles(mapped)
+        }
+      } catch (err) {
+        console.warn("Could not fetch student profiles:", err)
+      }
+    }
+    loadStudents()
+  }, [])
+
   const studentList: StudentProfile[] = useMemo(() => {
-    if (!active) return []
-    return [
-      {
-        id: "active-user",
-        name: active.display_name,
-        username: active.username,
-        branch: active.branch,
-        batchYear: active.batch,
-        bio: active.bio || "Student member on Vertex Campus.",
-        communities: [],
-        interests: [],
-        avatarPhoto: active.avatar_url,
-        major_club: active.major_club,
-        major_sport: active.major_sport,
-        minor_club: active.minor_club,
-        minor_sport: active.minor_sport,
-        community_club: active.community_club,
-      },
-    ]
-  }, [active])
+    const list = [...remoteProfiles]
+    if (active && active.display_name) {
+      const exists = list.some((s) => s.name.toLowerCase() === active.display_name.toLowerCase())
+      if (!exists) {
+        list.unshift({
+          id: "active-user",
+          name: active.display_name,
+          username: active.username,
+          branch: active.branch,
+          batchYear: active.batch,
+          bio: active.bio || "Student member on Vertex Campus.",
+          communities: [],
+          interests: [],
+          avatarPhoto: active.avatar_url,
+          major_club: active.major_club,
+          major_sport: active.major_sport,
+          minor_club: active.minor_club,
+          minor_sport: active.minor_sport,
+          community_club: active.community_club,
+        })
+      }
+    }
+    return list
+  }, [active, remoteProfiles])
+
+  const handleViewPeerProfile = (student: StudentProfile) => {
+    const previewData = {
+      display_name: student.name,
+      username: student.username,
+      branch: student.branch,
+      batch: student.batchYear,
+      bio: student.bio,
+      avatar_url: student.avatarPhoto || "",
+      major_club: student.major_club,
+      major_sport: student.major_sport,
+      minor_club: student.minor_club,
+      minor_sport: student.minor_sport,
+      community_club: student.community_club,
+      instagram_url: student.username ? `https://instagram.com/${student.username}` : "",
+      linkedin_url: student.username ? `https://linkedin.com/in/${student.username}` : "",
+    }
+    localStorage.setItem("vertex_preview_profile", JSON.stringify(previewData))
+    navigate(`/profile?preview=${encodeURIComponent(student.username || student.name)}`)
+  }
 
   const toggleConnect = (id: string | number, studentName: string) => {
     if (isUserBlocked(studentName)) return
@@ -385,12 +443,22 @@ function Students() {
                 </p>
 
                 <div className="pt-3 border-t border-[#d8cebe] flex items-center justify-between mt-auto gap-2">
-                  <Link
-                    to="/profile"
-                    className="font-mono text-xs font-bold text-[#141c2b] hover:text-[#d84c23] underline truncate"
-                  >
-                    {isSelf ? "View Your Profile →" : "View Profile →"}
-                  </Link>
+                  {isSelf ? (
+                    <Link
+                      to="/profile"
+                      className="font-mono text-xs font-bold text-[#141c2b] hover:text-[#d84c23] underline truncate"
+                    >
+                      View Your Profile →
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleViewPeerProfile(student)}
+                      className="font-mono text-xs font-bold text-[#141c2b] hover:text-[#d84c23] underline truncate cursor-pointer"
+                    >
+                      View Profile →
+                    </button>
+                  )}
 
                   {isSelf ? (
                     <span className="font-mono text-[10px] font-bold uppercase text-[#141c2b] bg-[#eae2d5] px-2.5 py-1 border border-[#141c2b] rounded-xs shadow-[1px_1px_0px_#141c2b]">

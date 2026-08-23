@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile } from "../lib/tempStore"
 import { saveStudentProfile, signOutStudent } from "../lib/supabaseService"
+import { supabase } from "../lib/supabase"
 
 function Profile() {
   const navigate = useNavigate()
@@ -17,32 +18,56 @@ function Profile() {
   const [isPreviewing, setIsPreviewing] = useState(false)
 
   useEffect(() => {
-    try {
-      if (previewParam) {
-        const previewRaw = localStorage.getItem("vertex_preview_profile")
-        if (previewRaw) {
-          const parsed = JSON.parse(previewRaw) as ProfileData
-          setProfile(parsed)
-          setIsPreviewing(true)
-          setInterests([])
-          return
-        }
-      }
+    async function loadProfile() {
+      try {
+        if (previewParam) {
+          const previewRaw = localStorage.getItem("vertex_preview_profile")
+          if (previewRaw) {
+            const parsed = JSON.parse(previewRaw) as ProfileData
+            if (
+              parsed.display_name?.toLowerCase() === previewParam.toLowerCase() ||
+              parsed.username?.toLowerCase() === previewParam.toLowerCase()
+            ) {
+              setProfile(parsed)
+              setIsPreviewing(true)
+              setInterests([])
+              return
+            }
+          }
 
-      // Read active profile
-      const active = getActiveProfile()
-      if (active) {
-        setProfile(active)
-        setIsPreviewing(false)
-        setInterests([])
-      } else {
+          // Fetch peer profile from Supabase
+          const clean = decodeURIComponent(previewParam).trim()
+          const { data: remote } = await supabase
+            .from("profiles")
+            .select("*")
+            .or(`username.ilike.${clean},email.ilike.${clean},display_name.ilike.${clean}`)
+            .maybeSingle()
+
+          if (remote) {
+            setProfile(remote)
+            setIsPreviewing(true)
+            setInterests([])
+            return
+          }
+        }
+
+        // Read active profile
+        const active = getActiveProfile()
+        if (active) {
+          setProfile(active)
+          setIsPreviewing(false)
+          setInterests([])
+        } else {
+          setProfile(null)
+          setIsPreviewing(false)
+          setInterests([])
+        }
+      } catch {
         setProfile(null)
-        setIsPreviewing(false)
-        setInterests([])
       }
-    } catch {
-      setProfile(null)
     }
+
+    loadProfile()
   }, [previewParam])
 
   async function handleLogout() {
