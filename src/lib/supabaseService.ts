@@ -168,21 +168,42 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
 
   // If no UID yet, check Supabase auth session
   if (!uid) {
-    const { data: authData } = await supabase.auth.getUser()
-    if (authData?.user?.id) {
-      uid = authData.user.id
-      const currentUser = getCachedUser()
-      if (currentUser) {
-        setCachedUser({ ...currentUser, id: uid })
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      if (authData?.user?.id) {
+        uid = authData.user.id
+        const currentUser = getCachedUser()
+        if (currentUser) {
+          setCachedUser({ ...currentUser, id: uid })
+        }
       }
+    } catch (e) {
+      console.warn("Could not retrieve auth user id:", e)
+    }
+  }
+
+  const cleanEmail = getCachedUser()?.email?.toLowerCase() || `${profileData.username || "student"}@bmu.edu.in`
+
+  // If still no UID, try looking up existing profile id by email
+  if (!uid) {
+    try {
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", cleanEmail)
+        .maybeSingle()
+      if (existing?.id) {
+        uid = existing.id
+      }
+    } catch (e) {
+      console.warn("Could not lookup profile id by email:", e)
     }
   }
 
   if (!uid) {
+    console.warn("⚠️ No Supabase User ID found. Profile saved locally.")
     return profileData
   }
-
-  const cleanEmail = getCachedUser()?.email?.toLowerCase() || `${profileData.username || "student"}@bmu.edu.in`
 
   const payload = {
     id: uid,
@@ -203,20 +224,25 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
     updated_at: new Date().toISOString(),
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .upsert(payload, { onConflict: "id" })
-    .select()
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert(payload, { onConflict: "id" })
+      .select()
+      .single()
 
-  if (error) {
-    console.warn("Supabase upsert profile notice:", error)
-  } else if (data) {
-    console.log("💾 [PROFILE PERSISTED TO SUPABASE DATABASE]:", data)
-    setCachedProfile(data)
+    if (error) {
+      console.error("❌ Supabase profiles upsert error:", error.message, error.details, error.hint)
+    } else if (data) {
+      console.log("✅ [PROFILE SUCCESSFULLY PERSISTED IN SUPABASE]:", data)
+      setCachedProfile(data)
+      return data
+    }
+  } catch (err) {
+    console.error("❌ Supabase profiles unexpected exception:", err)
   }
 
-  return data || profileData
+  return profileData
 }
 
 export async function fetchAllProfiles() {
