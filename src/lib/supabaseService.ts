@@ -407,52 +407,103 @@ export async function createCommunityInDb(comm: SupabaseCommunity) {
   return data
 }
 
-// ── ANNOUNCEMENTS TABLE CRUD ──────────────────────────────────────────────
-
-export interface SupabaseAnnouncement {
-  id?: string
-  community_id: string
-  author_id?: string
-  title: string
-  content: string
-  tag?: string
-  image?: string
-  likes?: number
-  dislikes?: number
+export async function deleteCommunityInDb(communityIdOrName: string) {
+  try {
+    await supabase
+      .from("communities")
+      .delete()
+      .or(`id.eq.${communityIdOrName},name.ilike.${communityIdOrName}`)
+  } catch (err) {
+    console.warn("Supabase delete community notice:", err)
+  }
 }
 
-export async function fetchAnnouncementsFromDb(communityId: string) {
-  const { data, error } = await supabase
-    .from("announcements")
-    .select("*")
-    .eq("community_id", communityId)
-    .order("created_at", { ascending: false })
+export async function fetchCommunityDetailFromDb(nameOrId: string) {
+  const clean = decodeURIComponent(nameOrId).trim()
+  try {
+    const { data: comm, error } = await supabase
+      .from("communities")
+      .select("*")
+      .or(`id.eq.${clean},name.ilike.${clean}`)
+      .maybeSingle()
 
-  if (error) {
-    console.warn("Supabase fetch announcements error:", error)
+    if (error || !comm) {
+      return null
+    }
+
+    // Fetch announcements for this community
+    const { data: annList } = await supabase
+      .from("announcements")
+      .select("*")
+      .eq("community_id", comm.id)
+      .order("created_at", { ascending: false })
+
+    // Fetch founder profile if available
+    let creatorInfo = {
+      name: "Student Leader",
+      branch: "BML Munjal University",
+      batch: "Student",
+      email: undefined as string | undefined,
+    }
+
+    if (comm.created_by) {
+      const { data: creator } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", comm.created_by)
+        .maybeSingle()
+      if (creator) {
+        creatorInfo = {
+          name: creator.display_name,
+          branch: creator.branch,
+          batch: creator.batch,
+          email: creator.email,
+        }
+      }
+    }
+
+    return {
+      id: comm.id,
+      name: comm.name,
+      description: comm.description,
+      members_count: comm.members_count || 1,
+      whatsapp_link: comm.whatsapp_link,
+      instagram_link: comm.instagram_link,
+      image: comm.image || "/default-banner.jpg",
+      created_at: comm.created_at || new Date().toISOString(),
+      created_by: creatorInfo,
+      announcements: (annList || []).map((a) => ({
+        id: a.id,
+        title: a.title,
+        content: a.content,
+        date: a.created_at ? new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Today",
+        author: creatorInfo.name,
+        tag: a.tag || "NOTICE",
+        image: a.image,
+        likes: a.likes || 0,
+        dislikes: a.dislikes || 0,
+      })),
+      members: [
+        {
+          id: comm.created_by || "founder",
+          name: creatorInfo.name,
+          branch: creatorInfo.branch,
+          batch: creatorInfo.batch,
+          is_founder: true,
+          role: "founder" as const,
+        },
+      ],
+    }
+  } catch (err) {
+    console.warn("Supabase fetch community detail error:", err)
     return null
   }
-  return data
 }
 
-export async function postAnnouncementToDb(ann: SupabaseAnnouncement) {
-  const user = getCachedUser()
-  const payload = {
-    ...ann,
-    author_id: user?.id || null,
-    likes: 0,
-    dislikes: 0,
+export async function deleteAnnouncementInDb(id: string) {
+  try {
+    await supabase.from("announcements").delete().eq("id", id)
+  } catch (err) {
+    console.warn("Supabase delete announcement error:", err)
   }
-
-  const { data, error } = await supabase
-    .from("announcements")
-    .insert(payload)
-    .select()
-    .single()
-
-  if (error) {
-    console.error("Supabase post announcement error:", error)
-    throw error
-  }
-  return data
 }

@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router"
 import { Megaphone } from "lucide-react"
 import CommunityCard, { type CommunityCardProps } from "../components/CommunityCard"
 import { getStoredCommunities } from "../lib/mockStore"
+import { fetchCommunitiesFromDb } from "../lib/supabaseService"
+import { supabase } from "../lib/supabase"
 
 interface HomeAnnouncement {
   id: string
@@ -25,49 +27,114 @@ function Home() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    try {
-      setLoading(true)
-      const list = getStoredCommunities()
-      const mapped: CommunityCardProps[] = list.slice(0, 4).map((c) => ({
-        id: c.id,
-        name: c.name,
-        description: c.description,
-        members: c.members_count || c.members?.length || 1,
-        members_count: c.members_count || c.members?.length || 1,
-        whatsapp_link: c.whatsapp_link,
-        instagram_link: c.instagram_link,
-        image: c.image,
-      }))
-      setDbCommunities(mapped)
+    async function loadHomeData() {
+      try {
+        setLoading(true)
+        // 1. Load local cache
+        const localList = getStoredCommunities()
+        let mapped: CommunityCardProps[] = localList.map((c) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          members: c.members_count || c.members?.length || 1,
+          members_count: c.members_count || c.members?.length || 1,
+          whatsapp_link: c.whatsapp_link,
+          instagram_link: c.instagram_link,
+          image: c.image,
+        }))
 
-      // Collect all announcements from communities
-      const collected: HomeAnnouncement[] = []
-      list.forEach((comm) => {
-        if (comm.announcements && comm.announcements.length > 0) {
-          comm.announcements.forEach((ann) => {
-            collected.push({
-              id: ann.id,
-              communityName: comm.name,
-              title: ann.title,
-              content: ann.content,
-              date: ann.date,
-              author: ann.author,
-              tag: ann.tag,
-              image: ann.image,
-              likes: ann.likes || 0,
-              dislikes: ann.dislikes || 0,
+        // Collect local announcements
+        const collected: HomeAnnouncement[] = []
+        localList.forEach((comm) => {
+          if (comm.announcements && comm.announcements.length > 0) {
+            comm.announcements.forEach((ann) => {
+              collected.push({
+                id: ann.id,
+                communityName: comm.name,
+                title: ann.title,
+                content: ann.content,
+                date: ann.date,
+                author: ann.author,
+                tag: ann.tag,
+                image: ann.image,
+                likes: ann.likes || 0,
+                dislikes: ann.dislikes || 0,
+              })
             })
-          })
+          }
+        })
+
+        // 2. Fetch live data from Supabase
+        try {
+          const remoteComms = await fetchCommunitiesFromDb()
+          if (remoteComms && Array.isArray(remoteComms) && remoteComms.length > 0) {
+            const mappedRemote: CommunityCardProps[] = remoteComms.map((c) => ({
+              id: c.id || c.name,
+              name: c.name,
+              description: c.description,
+              members: c.members_count || 1,
+              members_count: c.members_count || 1,
+              whatsapp_link: c.whatsapp_link,
+              instagram_link: c.instagram_link,
+              image: c.image,
+            }))
+
+            const seen = new Set<string>()
+            mapped = [...mappedRemote, ...mapped].filter((c) => {
+              const k = c.name.trim().toLowerCase()
+              if (seen.has(k)) return false
+              seen.add(k)
+              return true
+            })
+
+            // Also fetch announcements from Supabase
+            const { data: dbAnnouncements } = await supabase
+              .from("announcements")
+              .select("*, communities(name)")
+              .order("created_at", { ascending: false })
+
+            if (dbAnnouncements && dbAnnouncements.length > 0) {
+              const remoteAnn = dbAnnouncements.map((a: any) => ({
+                id: a.id,
+                communityName: a.communities?.name || "Campus Community",
+                title: a.title,
+                content: a.content,
+                date: a.created_at ? new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Today",
+                author: "Community Dispatch",
+                tag: a.tag || "NOTICE",
+                image: a.image,
+                likes: a.likes || 0,
+                dislikes: a.dislikes || 0,
+              }))
+
+              // Merge announcements without duplicates
+              const seenAnn = new Set<string>()
+              const combinedAnn = [...remoteAnn, ...collected].filter((a) => {
+                if (seenAnn.has(a.id)) return false
+                seenAnn.add(a.id)
+                return true
+              })
+              setAnnouncements(combinedAnn)
+            } else {
+              setAnnouncements(collected)
+            }
+          } else {
+            setAnnouncements(collected)
+          }
+        } catch (dbErr) {
+          console.warn("Supabase home load notice:", dbErr)
+          setAnnouncements(collected)
         }
-      })
-      setAnnouncements(collected)
-    } catch (err) {
-      console.error("Error loading home communities:", err)
-      setDbCommunities([])
-      setAnnouncements([])
-    } finally {
-      setLoading(false)
+
+        setDbCommunities(mapped.slice(0, 4))
+      } catch (err) {
+        console.error("Error loading home data:", err)
+      } finally {
+        setLoading(false)
+      }
     }
+
+    loadHomeData()
   }, [])
 
   const handleSearchSubmit = (e: React.FormEvent) => {

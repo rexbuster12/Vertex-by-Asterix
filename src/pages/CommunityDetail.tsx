@@ -25,7 +25,6 @@ import EditCommunityModal from "../components/EditCommunityModal"
 import CreateAnnouncementModal from "../components/CreateAnnouncementModal"
 import {
   findCommunityByName,
-  getStoredCommunities,
   deleteMockCommunity,
   updateMockCommunity,
   addCommunityAnnouncement,
@@ -38,6 +37,7 @@ import {
 } from "../lib/mockStore"
 import { getActiveProfile } from "../lib/tempStore"
 import { addNotification } from "../lib/notificationStore"
+import { fetchCommunityDetailFromDb, deleteCommunityInDb } from "../lib/supabaseService"
 
 const FALLBACK_COVER = "/default-banner.jpg"
 
@@ -58,27 +58,38 @@ function CommunityDetail() {
   const activeProfile = getActiveProfile()
 
   useEffect(() => {
-    if (!communityName) {
-      setLoading(false)
-      return
-    }
+    async function loadCommunity() {
+      if (!communityName) {
+        setLoading(false)
+        return
+      }
 
-    const decoded = decodeURIComponent(communityName)
-    const found = findCommunityByName(decoded)
+      const decoded = decodeURIComponent(communityName).trim()
 
-    if (found) {
-      setCommunity(found)
-      setMemberCount(found.members_count || found.members?.length || 1)
-    } else {
-      const all = getStoredCommunities()
-      if (all.length > 0) {
-        setCommunity(all[0])
-        setMemberCount(all[0].members_count || 1)
-      } else {
-        setCommunity(null)
+      // 1. Check local cache first for instant render
+      const localFound = findCommunityByName(decoded)
+      if (localFound) {
+        setCommunity(localFound)
+        setMemberCount(localFound.members_count || localFound.members?.length || 1)
+      }
+
+      // 2. Fetch live data from Supabase
+      try {
+        const remoteCommunity = await fetchCommunityDetailFromDb(decoded)
+        if (remoteCommunity) {
+          setCommunity(remoteCommunity as MockCommunity)
+          setMemberCount(remoteCommunity.members_count || remoteCommunity.members?.length || 1)
+        } else if (!localFound) {
+          setCommunity(null)
+        }
+      } catch (err) {
+        console.warn("Supabase fetch community detail notice:", err)
+      } finally {
+        setLoading(false)
       }
     }
-    setLoading(false)
+
+    loadCommunity()
   }, [communityName])
 
   const handleToggleJoin = () => {
@@ -157,6 +168,7 @@ function CommunityDetail() {
   const handleDelete = () => {
     if (!community) return
     deleteMockCommunity(community.name)
+    deleteCommunityInDb(community.id || community.name)
     navigate("/communities")
   }
 
