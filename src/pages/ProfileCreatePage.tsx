@@ -3,6 +3,7 @@ import { useNavigate } from "react-router"
 import { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
 import { saveStudentProfile, uploadAvatarImage } from "../lib/supabaseService"
+import { supabase } from "../lib/supabase"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS, REGULAR_CLUBS } from "../lib/clubsData"
 
 const START_YEARS = [2022, 2023, 2024, 2025, 2026]
@@ -56,28 +57,34 @@ function ProfileSetup() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // Check if existing profile is being edited
-    const active = getActiveProfile()
-    if (active) {
-      setDisplayName(active.display_name || "")
-      setBio(active.bio || "")
-      setAvatarPreview(active.avatar_url || null)
-      if (active.branch) {
-        if (COURSE_OPTIONS.includes(active.branch)) setCourse(active.branch)
-        else { setCourse("Others"); setOtherCourse(active.branch) }
+    async function checkExistingProfile() {
+      const active = getActiveProfile()
+      if (active && active.display_name && active.branch) {
+        navigate("/home", { replace: true })
+        return
       }
-      if (active.instagram_url) setInstagram(active.instagram_url)
-      if (active.linkedin_url) setLinkedin(active.linkedin_url)
-      if (active.major_club) setMajorClub(active.major_club)
-      if (active.major_sport) setMajorSport(active.major_sport)
-      if (active.minor_club) setMinorClub(active.minor_club)
-      if (active.minor_sport) setMinorSport(active.minor_sport)
-      if (active.community_club) setCommunityClub(active.community_club)
-    } else {
-      // New profile creation: Keep full name completely empty
-      setDisplayName("")
+
+      const user = getActiveUser()
+      if (user?.email) {
+        try {
+          const { data } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("email", user.email.toLowerCase())
+            .maybeSingle()
+
+          if (data && data.display_name && data.branch) {
+            setActiveProfile(data)
+            navigate("/home", { replace: true })
+            return
+          }
+        } catch (err) {
+          console.warn("Could not query profile on create page:", err)
+        }
+      }
     }
-  }, [])
+    checkExistingProfile()
+  }, [navigate])
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]

@@ -194,21 +194,30 @@ export async function signInStudent(email: string, password: string) {
 
   let studentProfile: ActiveProfile | null = null
 
-  // Fetch student profile from Supabase by user.id OR email
+  // Fetch student profile from Supabase by cleanEmail (and fallback to username)
   try {
-    let query = supabase.from("profiles").select("*")
-    if (data.user?.id) {
-      query = query.or(`id.eq.${data.user.id},email.eq.${cleanEmail}`)
-    } else {
-      query = query.eq("email", cleanEmail)
-    }
-
-    const { data: profile, error: profileErr } = await query.maybeSingle()
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("email", cleanEmail)
+      .maybeSingle()
 
     if (profile && !profileErr) {
       console.log("📥 [PROFILE RESTORED FROM SUPABASE FOR @" + username + "]:", profile)
       setCachedProfile(profile)
       studentProfile = profile
+    } else {
+      // Fallback by username
+      const { data: profileByUsername } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("username", username)
+        .maybeSingle()
+      if (profileByUsername) {
+        console.log("📥 [PROFILE RESTORED BY USERNAME FOR @" + username + "]:", profileByUsername)
+        setCachedProfile(profileByUsername)
+        studentProfile = profileByUsername
+      }
     }
   } catch (err) {
     console.warn("Could not fetch remote profile on sign in:", err)

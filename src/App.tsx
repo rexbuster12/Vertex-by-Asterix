@@ -43,9 +43,6 @@ function PublicAuthRoute({ children }: { children: React.ReactNode }) {
   if (user && profile) {
     return <Navigate to="/home" replace />
   }
-  if (user && !profile) {
-    return <Navigate to="/profile/create" replace />
-  }
   return <>{children}</>
 }
 
