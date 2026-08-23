@@ -15,8 +15,18 @@ import {
   cancelConnectionRequest,
   disconnectUsers,
   getConnectedStudentNames,
+  mergeRemoteConnectionRequests,
 } from "../lib/tempStore"
-import { saveStudentProfile, signOutStudent, fetchCommunitiesFromDb } from "../lib/supabaseService"
+import {
+  saveStudentProfile,
+  signOutStudent,
+  fetchCommunitiesFromDb,
+  sendConnectionRequestInDb,
+  acceptConnectionRequestInDb,
+  declineConnectionRequestInDb,
+  cancelConnectionRequestInDb,
+  syncConnectionRequestsFromDb,
+} from "../lib/supabaseService"
 import { getStoredCommunities } from "../lib/mockStore"
 import { addNotification } from "../lib/notificationStore"
 import { supabase } from "../lib/supabase"
@@ -34,6 +44,23 @@ function Profile() {
   const [isReportOpen, setIsReportOpen] = useState(false)
 
   const active = getActiveProfile()
+
+  useEffect(() => {
+    async function syncRemote() {
+      if (active?.display_name) {
+        try {
+          const remoteReqs = await syncConnectionRequestsFromDb(active.display_name)
+          if (remoteReqs && remoteReqs.length > 0) {
+            mergeRemoteConnectionRequests(remoteReqs)
+            setConnectionVersion((v) => v + 1)
+          }
+        } catch { }
+      }
+    }
+    syncRemote()
+    const interval = setInterval(syncRemote, 4000)
+    return () => clearInterval(interval)
+  }, [active?.display_name])
 
   useEffect(() => {
     async function loadProfile() {
@@ -157,6 +184,11 @@ function Profile() {
       batch: active.batch,
       avatar: active.avatar_url,
     })
+    sendConnectionRequestInDb(active.display_name, profile.display_name, {
+      branch: active.branch,
+      batch: active.batch,
+      avatar: active.avatar_url,
+    })
     setConnectionVersion((v) => v + 1)
     addNotification({
       type: "connection_received",
@@ -170,6 +202,9 @@ function Profile() {
   const handleAcceptRequest = (requestId: string) => {
     if (!profile) return
     acceptConnectionRequest(requestId)
+    if (active?.display_name) {
+      acceptConnectionRequestInDb(requestId, profile.display_name, active.display_name)
+    }
     setConnectionVersion((v) => v + 1)
     addNotification({
       type: "connection_received",
@@ -181,13 +216,16 @@ function Profile() {
   }
 
   const handleDeclineRequest = (requestId: string) => {
+    if (!profile) return
     declineConnectionRequest(requestId)
+    declineConnectionRequestInDb(requestId, profile.display_name, active?.display_name)
     setConnectionVersion((v) => v + 1)
   }
 
   const handleCancelRequest = () => {
     if (!profile || !active?.display_name) return
     cancelConnectionRequest(active.display_name, profile.display_name)
+    cancelConnectionRequestInDb(active.display_name, profile.display_name)
     setConnectionVersion((v) => v + 1)
   }
 

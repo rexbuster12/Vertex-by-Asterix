@@ -573,7 +573,7 @@ async function formatCommunityPayload(comm: any) {
   try {
     const { data: memberRows } = await supabase
       .from("community_members")
-      .select("id, user_id, role, created_at")
+      .select("id, user_id, role")
       .eq("community_id", comm.id)
 
     if (memberRows && memberRows.length > 0) {
@@ -1137,5 +1137,171 @@ export async function submitReportToDb(
     console.warn("Supabase report submission notice:", err)
     return { success: true }
   }
+}
+
+// ── CROSS-CLIENT CONNECTION REQUESTS & NOTIFICATIONS ─────────────
+
+export async function syncConnectionRequestsFromDb(activeName: string): Promise<any[]> {
+  if (!activeName) return []
+  try {
+    const clean = activeName.trim()
+    const { data } = await supabase
+      .from("connection_requests")
+      .select("*")
+      .or(`from_name.ilike.${clean},to_name.ilike.${clean}`)
+
+    if (data && Array.isArray(data)) {
+      return data.map((d: any) => ({
+        id: d.id,
+        fromName: d.from_name,
+        fromBranch: d.from_branch,
+        fromBatch: d.from_batch,
+        fromAvatar: d.from_avatar,
+        toName: d.to_name,
+        status: d.status || "pending",
+        createdAt: d.created_at,
+      }))
+    }
+  } catch (err) {
+    console.warn("Could not sync connection requests from Supabase:", err)
+  }
+  return []
+}
+
+export async function sendConnectionRequestInDb(
+  fromName: string,
+  toName: string,
+  fromInfo?: { branch?: string; batch?: string; avatar?: string }
+) {
+  if (!fromName || !toName) return
+  try {
+    // 1. Insert connection request
+    await supabase.from("connection_requests").upsert(
+      {
+        from_name: fromName.trim(),
+        to_name: toName.trim(),
+        from_branch: fromInfo?.branch,
+        from_batch: fromInfo?.batch,
+        from_avatar: fromInfo?.avatar,
+        status: "pending",
+      },
+      { onConflict: "from_name,to_name" }
+    )
+
+    // 2. Insert notification targeted at recipient (toName)
+    await supabase.from("notifications").insert({
+      user_name: toName.trim(),
+      type: "connection_received",
+      title: `New Connection Request`,
+      message: `${fromName} sent you a connection request on Vertex!`,
+      link_url: "/students",
+      source_name: fromName.trim(),
+      source_avatar: fromInfo?.avatar,
+    })
+  } catch (err) {
+    console.warn("Could not write connection request to Supabase:", err)
+  }
+}
+
+export async function acceptConnectionRequestInDb(
+  requestId: string,
+  fromName: string,
+  toName: string
+) {
+  try {
+    if (isUUID(requestId)) {
+      await supabase
+        .from("connection_requests")
+        .update({ status: "accepted" })
+        .eq("id", requestId)
+    } else {
+      await supabase
+        .from("connection_requests")
+        .update({ status: "accepted" })
+        .ilike("from_name", fromName)
+        .ilike("to_name", toName)
+    }
+
+    // Insert acceptance notification for the requester (fromName)
+    await supabase.from("notifications").insert({
+      user_name: fromName.trim(),
+      type: "connection_received",
+      title: `Connected with ${toName}`,
+      message: `${toName} accepted your connection request!`,
+      link_url: "/students",
+      source_name: toName.trim(),
+    })
+  } catch (err) {
+    console.warn("Could not accept connection request in DB:", err)
+  }
+}
+
+export async function declineConnectionRequestInDb(
+  requestId: string,
+  fromName?: string,
+  toName?: string
+) {
+  try {
+    if (isUUID(requestId)) {
+      await supabase.from("connection_requests").delete().eq("id", requestId)
+    } else if (fromName && toName) {
+      await supabase
+        .from("connection_requests")
+        .delete()
+        .ilike("from_name", fromName)
+        .ilike("to_name", toName)
+    }
+  } catch (err) {
+    console.warn("Could not decline connection request in DB:", err)
+  }
+}
+
+export async function cancelConnectionRequestInDb(fromName: string, toName: string) {
+  try {
+    await supabase
+      .from("connection_requests")
+      .delete()
+      .ilike("from_name", fromName.trim())
+      .ilike("to_name", toName.trim())
+  } catch (err) {
+    console.warn("Could not cancel connection request in DB:", err)
+  }
+}
+
+export async function syncNotificationsFromDb(userName: string): Promise<any[]> {
+  if (!userName) return []
+  try {
+    const { data } = await supabase
+      .from("notifications")
+      .select("*")
+      .ilike("user_name", userName.trim())
+      .order("created_at", { ascending: false })
+      .limit(40)
+
+    if (data && Array.isArray(data)) {
+      return data.map((n: any) => ({
+        id: n.id,
+        type: n.type || "connection_received",
+        title: n.title,
+        message: n.message,
+        timestamp: n.created_at
+          ? new Date(n.created_at).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "Just now",
+        read: n.is_read || false,
+        linkUrl: n.link_url,
+        sourceName: n.source_name,
+        sourceAvatar: n.source_avatar,
+        communityName: n.community_name,
+      }))
+    }
+  } catch (err) {
+    console.warn("Could not sync notifications from DB:", err)
+  }
+  return []
 }
 

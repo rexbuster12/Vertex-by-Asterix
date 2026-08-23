@@ -327,6 +327,35 @@ export function disconnectUsers(userA: string, userB: string) {
   saveAllTwoWayConnections(map)
 }
 
+export function mergeRemoteConnectionRequests(remoteList: ConnectionRequest[]) {
+  if (!remoteList || remoteList.length === 0) return
+  const local = loadAllConnectionRequests()
+  const map = new Map<string, ConnectionRequest>()
+  local.forEach((r) => map.set(`${r.fromName.toLowerCase()}->${r.toName.toLowerCase()}`, r))
+  remoteList.forEach((r) => map.set(`${r.fromName.toLowerCase()}->${r.toName.toLowerCase()}`, r))
+  saveAllConnectionRequests(Array.from(map.values()))
+
+  // Also sync two-way connections for accepted requests
+  const connMap = loadAllTwoWayConnections()
+  let changed = false
+  remoteList.forEach((r) => {
+    if (r.status === "accepted") {
+      const a = r.fromName.trim().toLowerCase()
+      const b = r.toName.trim().toLowerCase()
+      const setA = new Set(connMap[a] || [])
+      const setB = new Set(connMap[b] || [])
+      if (!setA.has(b) || !setB.has(a)) {
+        setA.add(b)
+        setB.add(a)
+        connMap[a] = Array.from(setA)
+        connMap[b] = Array.from(setB)
+        changed = true
+      }
+    }
+  })
+  if (changed) saveAllTwoWayConnections(connMap)
+}
+
 // Clear any old saved profiles, emails, and mock communities from browser storage
 export function clearAllPersistentProfiles() {
   try {

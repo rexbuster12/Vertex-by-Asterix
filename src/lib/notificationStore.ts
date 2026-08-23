@@ -101,6 +101,20 @@ export function markAllAsRead() {
   saveNotifications(updated)
 }
 
+export function mergeRemoteNotifications(remoteNotifs: VertexNotification[]) {
+  if (!remoteNotifs || remoteNotifs.length === 0) return
+  const current = getNotifications()
+  const map = new Map<string, VertexNotification>()
+  current.forEach((n) => map.set(n.id, n))
+  remoteNotifs.forEach((n) => {
+    if (!map.has(n.id)) {
+      map.set(n.id, n)
+    }
+  })
+  const combined = Array.from(map.values())
+  saveNotifications(combined)
+}
+
 export function clearNotifications() {
   saveNotifications([])
 }

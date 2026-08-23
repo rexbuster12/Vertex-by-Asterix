@@ -4,8 +4,10 @@ import { Bell, LogOut } from "lucide-react"
 import {
   getUnreadNotificationCount,
   subscribeToNotifications,
+  mergeRemoteNotifications,
 } from "../lib/notificationStore"
-import { signOutStudent } from "../lib/supabaseService"
+import { signOutStudent, syncNotificationsFromDb } from "../lib/supabaseService"
+import { getActiveProfile } from "../lib/tempStore"
 
 function Navbar() {
   const navigate = useNavigate()
@@ -17,7 +19,25 @@ function Navbar() {
     const unsubscribe = subscribeToNotifications(() => {
       setUnreadCount(getUnreadNotificationCount())
     })
-    return () => unsubscribe()
+
+    async function syncNotifs() {
+      const active = getActiveProfile()
+      if (active?.display_name) {
+        try {
+          const remoteNotifs = await syncNotificationsFromDb(active.display_name)
+          if (remoteNotifs && remoteNotifs.length > 0) {
+            mergeRemoteNotifications(remoteNotifs)
+          }
+        } catch { }
+      }
+    }
+
+    syncNotifs()
+    const interval = setInterval(syncNotifs, 4000)
+    return () => {
+      unsubscribe()
+      clearInterval(interval)
+    }
   }, [])
 
   async function handleLogout() {
