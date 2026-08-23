@@ -42,6 +42,65 @@ export function setCachedProfile(profile: ActiveProfile | null) {
   setActiveProfile(profile)
 }
 
+export function compressImage(
+  file: File,
+  maxWidth = 320,
+  maxHeight = 320,
+  quality = 0.8
+): Promise<{ file: File; base64: string }> {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        let width = img.width
+        let height = img.height
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width)
+            width = maxWidth
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height)
+            height = maxHeight
+          }
+        }
+
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+        if (!ctx) {
+          return resolve({ file, base64: e.target?.result as string })
+        }
+        ctx.drawImage(img, 0, 0, width, height)
+
+        const compressedBase64 = canvas.toDataURL("image/jpeg", quality)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                type: "image/jpeg",
+              })
+              resolve({ file: compressedFile, base64: compressedBase64 })
+            } else {
+              resolve({ file, base64: compressedBase64 })
+            }
+          },
+          "image/jpeg",
+          quality
+        )
+      }
+      img.onerror = () => resolve({ file, base64: e.target?.result as string })
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => resolve({ file, base64: "" })
+    reader.readAsDataURL(file)
+  })
+}
+
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -52,34 +111,36 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 export async function uploadAvatarImage(file: File, filenamePrefix?: string): Promise<string> {
-  // 1. Convert to Base64 so it can be rendered instantly and survive refreshes
-  const base64Url = await fileToBase64(file)
-  
-  // 2. Also try uploading to Supabase Storage 'avatars' bucket
   try {
-    const fileExt = file.name.split('.').pop() || 'jpg'
-    const fileName = `${filenamePrefix || 'avatar'}_${Date.now()}.${fileExt}`
+    const { file: compressedFile, base64: compressedBase64 } = await compressImage(file, 320, 320, 0.8)
+
+    // Try Supabase Storage upload
+    const fileExt = "jpg"
+    const fileName = `${filenamePrefix || "avatar"}_${Date.now()}.${fileExt}`
     const { data, error } = await supabase.storage
-      .from('avatars')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: true
+      .from("avatars")
+      .upload(fileName, compressedFile, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: "image/jpeg",
       })
-    
+
     if (!error && data?.path) {
       const { data: publicUrlData } = supabase.storage
-        .from('avatars')
+        .from("avatars")
         .getPublicUrl(data.path)
-      
+
       if (publicUrlData?.publicUrl) {
         return publicUrlData.publicUrl
       }
     }
-  } catch (err) {
-    console.warn("Supabase storage upload notice:", err)
-  }
 
-  return base64Url
+    // Fallback to small 25KB compressed Base64
+    return compressedBase64
+  } catch (err) {
+    console.warn("Avatar processing fallback:", err)
+    return fileToBase64(file)
+  }
 }
 
 // ── AUTHENTICATION ─────────────────────────────────────────────────────────
@@ -169,16 +230,12 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
 
   let uid = userId || getCachedUser()?.id
 
-  // If no UID yet, check Supabase auth session
+  // 1. If no UID yet, check Supabase auth session
   if (!uid) {
     try {
       const { data: authData } = await supabase.auth.getUser()
       if (authData?.user?.id) {
         uid = authData.user.id
-        const currentUser = getCachedUser()
-        if (currentUser) {
-          setCachedUser({ ...currentUser, id: uid })
-        }
       }
     } catch (e) {
       console.warn("Could not retrieve auth user id:", e)
@@ -186,8 +243,9 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
   }
 
   const cleanEmail = getCachedUser()?.email?.toLowerCase() || `${profileData.username || "student"}@bmu.edu.in`
+  const cleanUsername = profileData.username || getCachedUser()?.username || cleanEmail.split("@")[0]
 
-  // If still no UID, try looking up existing profile id by email
+  // 2. If still no UID, lookup existing profile by email
   if (!uid) {
     try {
       const { data: existing } = await supabase
@@ -203,15 +261,14 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
     }
   }
 
+  // 3. If still no UID, generate a deterministic/standard UUID
   if (!uid) {
-    console.warn("⚠️ No Supabase User ID found. Profile saved locally.")
-    return profileData
+    uid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : undefined
   }
 
-  const payload = {
-    id: uid,
+  const payload: Record<string, unknown> = {
     email: cleanEmail,
-    username: profileData.username || getCachedUser()?.username || "",
+    username: cleanUsername,
     display_name: profileData.display_name,
     bio: profileData.bio,
     branch: profileData.branch,
@@ -227,32 +284,42 @@ export async function saveStudentProfile(profileData: ActiveProfile, userId?: st
     updated_at: new Date().toISOString(),
   }
 
+  if (uid) {
+    payload.id = uid
+  }
+
   try {
-    const { data, error } = await supabase
+    // Attempt upsert by email first
+    const { data: byEmailData, error: byEmailErr } = await supabase
       .from("profiles")
-      .upsert(payload, { onConflict: "id" })
+      .upsert(payload, { onConflict: "email" })
       .select()
       .single()
 
-    if (error) {
-      console.warn("Supabase profiles upsert id error, trying email conflict fallback:", error.message)
-      const { data: data2, error: error2 } = await supabase
+    if (!byEmailErr && byEmailData) {
+      console.log("✅ [PROFILE SUCCESSFULLY PERSISTED IN SUPABASE]:", byEmailData)
+      setCachedProfile(byEmailData)
+      return byEmailData
+    }
+
+    // Fallback attempt upsert by id
+    if (uid) {
+      const { data: byIdData, error: byIdErr } = await supabase
         .from("profiles")
-        .upsert(payload, { onConflict: "email" })
+        .upsert(payload, { onConflict: "id" })
         .select()
         .single()
-      if (data2 && !error2) {
-        console.log("✅ [PROFILE SUCCESSFULLY PERSISTED IN SUPABASE VIA EMAIL]:", data2)
-        setCachedProfile(data2)
-        return data2
+
+      if (!byIdErr && byIdData) {
+        console.log("✅ [PROFILE SUCCESSFULLY PERSISTED IN SUPABASE VIA ID]:", byIdData)
+        setCachedProfile(byIdData)
+        return byIdData
+      } else if (byIdErr) {
+        console.error("❌ Supabase profile upsert error:", byIdErr.message, byIdErr.details)
       }
-    } else if (data) {
-      console.log("✅ [PROFILE SUCCESSFULLY PERSISTED IN SUPABASE]:", data)
-      setCachedProfile(data)
-      return data
     }
   } catch (err) {
-    console.error("❌ Supabase profiles unexpected exception:", err)
+    console.error("❌ Supabase profile unexpected exception:", err)
   }
 
   return profileData
