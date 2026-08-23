@@ -1,6 +1,6 @@
 import { supabase } from "./supabase"
 import type { ActiveProfile, ActiveUser } from "./tempStore"
-import { setActiveUser, setActiveProfile, getActiveProfile, getActiveUser } from "./tempStore"
+import { setActiveUser, setActiveProfile, getActiveProfile } from "./tempStore"
 
 // ── PERSISTED SESSION & CACHE HELPERS ───────────────────────────────────────
 const USER_CACHE_KEY = "vertex_auth_user"
@@ -378,9 +378,38 @@ export async function fetchCommunitiesFromDb() {
 
 export async function createCommunityInDb(comm: SupabaseCommunity) {
   const user = getCachedUser()
+  const profile = getActiveProfile()
+
+  // Resolve creator's profile UUID in Supabase
+  let creatorUserId: string | null = null
+  if (user?.id && isUUID(user.id)) {
+    creatorUserId = user.id
+  } else {
+    try {
+      if (profile?.display_name) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .ilike("display_name", profile.display_name.trim())
+          .maybeSingle()
+        if (prof?.id) creatorUserId = prof.id
+      }
+      if (!creatorUserId && user?.email) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("email", user.email.trim())
+          .maybeSingle()
+        if (prof?.id) creatorUserId = prof.id
+      }
+    } catch (e) {
+      console.warn("Could not resolve profile id for creator:", e)
+    }
+  }
+
   const payload = {
     ...comm,
-    created_by: user?.id || null,
+    created_by: creatorUserId,
     members_count: 1,
   }
 
@@ -406,12 +435,15 @@ export async function createCommunityInDb(comm: SupabaseCommunity) {
   }
 
   // Automatically add creator as founder member
-  if (data?.id && user?.id) {
-    await supabase.from("community_members").insert({
-      community_id: data.id,
-      user_id: user.id,
-      role: "founder",
-    })
+  if (data?.id && creatorUserId) {
+    await supabase.from("community_members").upsert(
+      {
+        community_id: data.id,
+        user_id: creatorUserId,
+        role: "founder",
+      },
+      { onConflict: "community_id,user_id" }
+    )
   }
 
   return data
@@ -444,17 +476,15 @@ async function formatCommunityPayload(comm: any) {
     .eq("community_id", comm.id)
     .order("created_at", { ascending: false })
 
-  const activeProfile = getActiveProfile()
-  const activeUser = getActiveUser()
-
   let creatorInfo = {
-    name: comm.created_by_name || activeProfile?.display_name || activeUser?.name || "Campus Head",
-    branch: activeProfile?.branch || "BML Munjal University",
-    batch: activeProfile?.batch || "Student",
-    email: comm.created_by_email || activeUser?.email || undefined as string | undefined,
-    avatar_url: activeProfile?.avatar_url || undefined as string | undefined,
+    name: "Student Leader",
+    branch: "BML Munjal University",
+    batch: "Student",
+    email: undefined as string | undefined,
+    avatar_url: undefined as string | undefined,
   }
 
+  // 1. If created_by is a valid UUID, fetch creator's actual profile from Supabase
   if (comm.created_by && isUUID(comm.created_by)) {
     try {
       const { data: creator } = await supabase
@@ -464,7 +494,7 @@ async function formatCommunityPayload(comm: any) {
         .maybeSingle()
       if (creator) {
         creatorInfo = {
-          name: creator.display_name,
+          name: creator.display_name || "Student Leader",
           branch: creator.branch || "BML Munjal University",
           batch: creator.batch || "Student",
           email: creator.email,
@@ -473,6 +503,35 @@ async function formatCommunityPayload(comm: any) {
       }
     } catch (e) {
       console.warn("Could not fetch creator info:", e)
+    }
+  } else {
+    // 2. If created_by is missing/null, check community_members table for who joined as 'founder' or 'head'
+    try {
+      const { data: founderMember } = await supabase
+        .from("community_members")
+        .select("user_id, role")
+        .eq("community_id", comm.id)
+        .in("role", ["founder", "head"])
+        .maybeSingle()
+
+      if (founderMember?.user_id) {
+        const { data: creator } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", founderMember.user_id)
+          .maybeSingle()
+        if (creator) {
+          creatorInfo = {
+            name: creator.display_name || "Student Leader",
+            branch: creator.branch || "BML Munjal University",
+            batch: creator.batch || "Student",
+            email: creator.email,
+            avatar_url: creator.avatar_url,
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not find founder member:", e)
     }
   }
 
