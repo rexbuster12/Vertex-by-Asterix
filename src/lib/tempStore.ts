@@ -347,35 +347,63 @@ export function disconnectUsers(userA: string, userB: string) {
     map[keyB] = map[keyB].filter((k) => k !== keyA)
   }
   saveAllTwoWayConnections(map)
+
+  // Remove from stored connection requests
+  const allReqs = loadAllConnectionRequests()
+  const filtered = allReqs.filter(
+    (r) =>
+      !(
+        (r.fromName.trim().toLowerCase() === keyA && r.toName.trim().toLowerCase() === keyB) ||
+        (r.fromName.trim().toLowerCase() === keyB && r.toName.trim().toLowerCase() === keyA)
+      )
+  )
+  saveAllConnectionRequests(filtered)
 }
 
-export function mergeRemoteConnectionRequests(remoteList: ConnectionRequest[]) {
-  if (!remoteList || remoteList.length === 0) return
+export function mergeRemoteConnectionRequests(
+  remoteList: ConnectionRequest[],
+  currentUserName?: string,
+  currentUsername?: string
+) {
   const local = loadAllConnectionRequests()
-  const map = new Map<string, ConnectionRequest>()
-  local.forEach((r) => map.set(`${r.fromName.toLowerCase()}->${r.toName.toLowerCase()}`, r))
-  remoteList.forEach((r) => map.set(`${r.fromName.toLowerCase()}->${r.toName.toLowerCase()}`, r))
-  saveAllConnectionRequests(Array.from(map.values()))
+  const keyName = currentUserName ? currentUserName.trim().toLowerCase() : ""
+  const keyUser = currentUsername ? currentUsername.trim().toLowerCase() : ""
+
+  const matchesUser = (name: string) => {
+    const n = name.trim().toLowerCase()
+    return (keyName && n === keyName) || (keyUser && n === keyUser)
+  }
+
+  let merged: ConnectionRequest[] = []
+  if (keyName || keyUser) {
+    const others = local.filter((r) => !matchesUser(r.fromName) && !matchesUser(r.toName))
+    merged = [...others, ...remoteList]
+  } else {
+    const map = new Map<string, ConnectionRequest>()
+    local.forEach((r) => map.set(`${r.fromName.toLowerCase()}->${r.toName.toLowerCase()}`, r))
+    remoteList.forEach((r) => map.set(`${r.fromName.toLowerCase()}->${r.toName.toLowerCase()}`, r))
+    merged = Array.from(map.values())
+  }
+  saveAllConnectionRequests(merged)
 
   // Also sync two-way connections for accepted requests
   const connMap = loadAllTwoWayConnections()
-  let changed = false
-  remoteList.forEach((r) => {
+  if (keyName) connMap[keyName] = []
+  if (keyUser) connMap[keyUser] = []
+
+  merged.forEach((r) => {
     if (r.status === "accepted") {
       const a = r.fromName.trim().toLowerCase()
       const b = r.toName.trim().toLowerCase()
       const setA = new Set(connMap[a] || [])
       const setB = new Set(connMap[b] || [])
-      if (!setA.has(b) || !setB.has(a)) {
-        setA.add(b)
-        setB.add(a)
-        connMap[a] = Array.from(setA)
-        connMap[b] = Array.from(setB)
-        changed = true
-      }
+      setA.add(b)
+      setB.add(a)
+      connMap[a] = Array.from(setA)
+      connMap[b] = Array.from(setB)
     }
   })
-  if (changed) saveAllTwoWayConnections(connMap)
+  saveAllTwoWayConnections(connMap)
 }
 
 // Clear any old saved profiles, emails, and mock communities from browser storage

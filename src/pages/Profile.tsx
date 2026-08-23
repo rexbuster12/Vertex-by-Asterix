@@ -26,6 +26,7 @@ import {
   declineConnectionRequestInDb,
   cancelConnectionRequestInDb,
   syncConnectionRequestsFromDb,
+  disconnectUsersInDb,
 } from "../lib/supabaseService"
 import { getStoredCommunities } from "../lib/mockStore"
 import { addNotification } from "../lib/notificationStore"
@@ -53,8 +54,8 @@ function Profile() {
       if (activeName || activeUsername) {
         try {
           const remoteReqs = await syncConnectionRequestsFromDb(activeName, activeUsername)
-          if (remoteReqs && remoteReqs.length > 0) {
-            mergeRemoteConnectionRequests(remoteReqs)
+          if (remoteReqs) {
+            mergeRemoteConnectionRequests(remoteReqs, activeName, activeUsername)
             setConnectionVersion((v) => v + 1)
           }
         } catch { }
@@ -233,15 +234,21 @@ function Profile() {
   }
 
   const handleDisconnect = () => {
-    if (!profile || !active?.display_name) return
-    disconnectUsers(active.display_name, profile.display_name)
+    if (!profile) return
+    const myName = active?.display_name || user?.name || ""
+    if (!myName) return
+    disconnectUsers(myName, profile.display_name)
+    disconnectUsersInDb(myName, profile.display_name)
     setConnectionVersion((v) => v + 1)
   }
 
   const connInfo = useMemo(() => {
-    if (!profile || !active?.display_name) return { status: "none" as const }
-    return getConnectionStatus(active.display_name, profile.display_name)
-  }, [profile, active?.display_name, connectionVersion])
+    if (!profile) return { status: "none" as const }
+    const myName = active?.display_name || user?.name || ""
+    const myUser = active?.username || user?.username || ""
+    if (!myName && !myUser) return { status: "none" as const }
+    return getConnectionStatus(myName, profile.display_name, myUser, profile.username)
+  }, [profile, active, user, connectionVersion])
 
   const initials =
     (profile?.display_name || "")

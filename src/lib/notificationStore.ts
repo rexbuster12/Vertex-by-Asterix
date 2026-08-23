@@ -14,6 +14,22 @@ export interface VertexNotification {
 }
 
 const NOTIFICATIONS_STORAGE_KEY = "vertex_notifications_v1"
+const DELETED_NOTIFICATIONS_STORAGE_KEY = "vertex_deleted_notifications_v1"
+
+function loadDeletedNotificationIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_NOTIFICATIONS_STORAGE_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveDeletedNotificationIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(DELETED_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(Array.from(ids)))
+  } catch { }
+}
 
 // Listeners for real-time reactivity across components
 type NotificationListener = () => void
@@ -42,7 +58,8 @@ export function getNotifications(): VertexNotification[] {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        return parsed
+        const deleted = loadDeletedNotificationIds()
+        return parsed.filter((n) => !deleted.has(n.id))
       }
     }
   } catch (err) {
@@ -101,13 +118,23 @@ export function markAllAsRead() {
   saveNotifications(updated)
 }
 
+export function deleteNotification(id: string) {
+  const current = getNotifications()
+  const updated = current.filter((n) => n.id !== id)
+  const deleted = loadDeletedNotificationIds()
+  deleted.add(id)
+  saveDeletedNotificationIds(deleted)
+  saveNotifications(updated)
+}
+
 export function mergeRemoteNotifications(remoteNotifs: VertexNotification[]) {
   if (!remoteNotifs || remoteNotifs.length === 0) return
+  const deleted = loadDeletedNotificationIds()
   const current = getNotifications()
   const map = new Map<string, VertexNotification>()
   current.forEach((n) => map.set(n.id, n))
   remoteNotifs.forEach((n) => {
-    if (!map.has(n.id)) {
+    if (!deleted.has(n.id) && !map.has(n.id)) {
       map.set(n.id, n)
     }
   })
@@ -116,6 +143,10 @@ export function mergeRemoteNotifications(remoteNotifs: VertexNotification[]) {
 }
 
 export function clearNotifications() {
+  const current = getNotifications()
+  const deleted = loadDeletedNotificationIds()
+  current.forEach((n) => deleted.add(n.id))
+  saveDeletedNotificationIds(deleted)
   saveNotifications([])
 }
 

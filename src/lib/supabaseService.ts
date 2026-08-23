@@ -1399,3 +1399,60 @@ export async function syncNotificationsFromDb(
   return []
 }
 
+export async function disconnectUsersInDb(userA: string, userB: string) {
+  if (!userA || !userB) return
+  const cleanA = userA.trim()
+  const cleanB = userB.trim()
+  try {
+    await Promise.all([
+      supabase
+        .from("connection_requests")
+        .delete()
+        .ilike("from_name", cleanA)
+        .ilike("to_name", cleanB),
+      supabase
+        .from("connection_requests")
+        .delete()
+        .ilike("from_name", cleanB)
+        .ilike("to_name", cleanA),
+    ])
+    console.log("🔌 [USERS DISCONNECTED IN SUPABASE]:", `${cleanA} <-> ${cleanB}`)
+  } catch (err) {
+    console.warn("Could not disconnect users in DB:", err)
+  }
+}
+
+export async function clearNotificationsInDb(userName: string, userUsername?: string) {
+  if (!userName && !userUsername) return
+  try {
+    const cleanName = userName ? userName.trim() : ""
+    const cleanUser = userUsername ? userUsername.trim() : ""
+    const promises: Promise<any>[] = []
+    if (cleanName) {
+      promises.push(
+        Promise.resolve(supabase.from("notifications").delete().ilike("user_name", cleanName))
+      )
+    }
+    if (cleanUser && cleanUser.toLowerCase() !== cleanName.toLowerCase()) {
+      promises.push(
+        Promise.resolve(supabase.from("notifications").delete().ilike("user_name", cleanUser))
+      )
+    }
+    await Promise.all(promises)
+    console.log("🧹 [NOTIFICATIONS CLEARED IN SUPABASE FOR]:", cleanName)
+  } catch (err) {
+    console.warn("Could not clear notifications in DB:", err)
+  }
+}
+
+export async function deleteNotificationInDb(id: string) {
+  if (!id) return
+  try {
+    if (isUUID(id)) {
+      await supabase.from("notifications").delete().eq("id", id)
+    }
+  } catch (err) {
+    console.warn("Could not delete notification in DB:", err)
+  }
+}
+

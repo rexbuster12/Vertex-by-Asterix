@@ -26,6 +26,7 @@ import {
   declineConnectionRequestInDb,
   cancelConnectionRequestInDb,
   syncConnectionRequestsFromDb,
+  disconnectUsersInDb,
 } from "../lib/supabaseService"
 import { COURSE_OPTIONS } from "./ProfileCreatePage"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS } from "../lib/clubsData"
@@ -103,11 +104,11 @@ function Students() {
       if (activeName || activeUsername) {
         try {
           const remoteReqs = await syncConnectionRequestsFromDb(activeName, activeUsername)
-          if (remoteReqs && remoteReqs.length > 0) {
-            mergeRemoteConnectionRequests(remoteReqs)
+          if (remoteReqs) {
+            mergeRemoteConnectionRequests(remoteReqs, activeName, activeUsername)
           }
         } catch { }
-        setIncomingRequests(getIncomingConnectionRequests(activeName))
+        setIncomingRequests(getIncomingConnectionRequests(activeName, activeUsername))
       }
     }
     syncRemote()
@@ -246,8 +247,10 @@ function Students() {
   }
 
   const handleDisconnect = (studentName: string) => {
-    if (!active?.display_name) return
-    disconnectUsers(active.display_name, studentName)
+    const myName = active?.display_name || user?.name || ""
+    if (!myName) return
+    disconnectUsers(myName, studentName)
+    disconnectUsersInDb(myName, studentName)
     setConnectionVersion((v) => v + 1)
   }
 

@@ -9,18 +9,20 @@ import {
   Trash2,
   ArrowLeft,
   ExternalLink,
+  X,
 } from "lucide-react"
 import {
   getNotifications,
   markAsRead,
   markAllAsRead,
   clearNotifications,
+  deleteNotification,
   subscribeToNotifications,
   mergeRemoteNotifications,
   type VertexNotification,
   type NotificationType,
 } from "../lib/notificationStore"
-import { syncNotificationsFromDb } from "../lib/supabaseService"
+import { syncNotificationsFromDb, clearNotificationsInDb, deleteNotificationInDb } from "../lib/supabaseService"
 import { getActiveProfile, getActiveUser } from "../lib/tempStore"
 
 function Notifications() {
@@ -57,6 +59,19 @@ function Notifications() {
     }
   }, [])
 
+  const handleClearAll = () => {
+    const active = getActiveProfile()
+    const user = getActiveUser()
+    clearNotifications()
+    clearNotificationsInDb(active?.display_name || user?.name || "", active?.username || user?.username || "")
+  }
+
+  const handleDeleteSingle = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    deleteNotification(id)
+    deleteNotificationInDb(id)
+  }
+
   const filtered = notifications.filter((n) => {
     if (filter === "ALL") return true
     return n.type === filter
@@ -84,48 +99,50 @@ function Notifications() {
       case "connection_received":
         return "CONNECTION"
       case "member_joined":
-        return "NEW MEMBER"
+        return "COMMUNITY JOIN"
       default:
         return "ALERT"
     }
   }
 
   return (
-    <div className="editorial-shell space-y-6 max-w-4xl mx-auto pb-12">
-      {/* Top Header Banner */}
-      <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-6 sm:p-8 shadow-[5px_5px_0px_#141c2b] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            {unreadCount > 0 && (
-              <span className="font-mono text-[10px] font-black uppercase px-2 py-0.5 bg-[#d84c23] text-white rounded-full">
-                {unreadCount} UNREAD
-              </span>
-            )}
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-[#141c2b] tracking-tight font-serif">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      {/* Back to Home Link */}
+      <div>
+        <Link
+          to="/home"
+          className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase text-[#545e6d] hover:text-[#141c2b] transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Feed</span>
+        </Link>
+      </div>
+
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b-2 border-[#141c2b]">
+        <div>
+          <span className="font-mono text-xs font-bold uppercase text-[#d84c23] tracking-widest block">
+            CENTRAL DISPATCH // ACTIVITY FEED
+          </span>
+          <h1 className="font-serif text-3xl sm:text-4xl font-extrabold text-[#141c2b]">
             Notifications Center
           </h1>
-          <p className="text-xs sm:text-sm text-[#545e6d] max-w-xl">
-            Real-time updates on student connections, newly joined members, and community broadcasts.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <Link
-            to="/home"
-            className="secondary-action font-mono text-xs uppercase flex items-center gap-1.5"
-            style={{ padding: "0.55rem 1.1rem" }}
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Home</span>
-          </Link>
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <span className="font-mono text-xs font-bold px-3 py-1.5 bg-[#d84c23] text-white border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+              {unreadCount} Unread
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Filter and Action Bar */}
-      <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg p-4 shadow-[4px_4px_0px_#141c2b] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Filter Tabs */}
-        <div className="flex items-center gap-1.5 flex-wrap">
+      {/* Filters and Controls */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* Filter Pills */}
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setFilter("ALL")}
@@ -184,11 +201,11 @@ function Notifications() {
           {notifications.length > 0 && (
             <button
               type="button"
-              onClick={clearNotifications}
+              onClick={handleClearAll}
               className="font-mono text-xs font-bold uppercase text-[#d84c23] bg-[#fbe8e6] hover:bg-[#d84c23] hover:text-white border-2 border-[#d84c23] px-3 py-1.5 rounded-xs shadow-[2px_2px_0px_#d84c23] hover:-translate-y-0.5 hover:shadow-[3px_3px_0px_#d84c23] active:translate-y-0 active:shadow-[1px_1px_0px_#d84c23] transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear</span>
+              <span>Clear All</span>
             </button>
           )}
         </div>
@@ -244,16 +261,26 @@ function Notifications() {
                   </div>
                 </div>
 
-                {/* Right Action Link */}
-                {item.linkUrl && (
-                  <Link
-                    to={item.linkUrl}
-                    className="font-mono text-[11px] font-bold uppercase px-3 py-1.5 bg-[#f5f1ea] hover:bg-[#141c2b] hover:text-white border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] transition-colors flex items-center gap-1.5 flex-shrink-0 self-center cursor-pointer"
+                {/* Right Action Links */}
+                <div className="flex items-center gap-2 flex-shrink-0 self-center">
+                  {item.linkUrl && (
+                    <Link
+                      to={item.linkUrl}
+                      className="font-mono text-[11px] font-bold uppercase px-3 py-1.5 bg-[#f5f1ea] hover:bg-[#141c2b] hover:text-white border-2 border-[#141c2b] rounded-xs shadow-[2px_2px_0px_#141c2b] transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>View</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteSingle(item.id, e)}
+                    className="p-1.5 text-[#8892a0] hover:text-[#d84c23] hover:bg-[#fbe8e6] border border-transparent hover:border-[#d84c23] rounded-xs transition-colors cursor-pointer"
+                    title="Delete notification"
                   >
-                    <span>View</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </Link>
-                )}
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))
