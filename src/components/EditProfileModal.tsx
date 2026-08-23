@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { screenFields, validateInstagramLink, validateLinkedInLink } from "../lib/contentFilter"
-import { COMMUNITY_CLUBS, MAJOR_CLUBS, REGULAR_CLUBS } from "../lib/clubsData"
+import { COMMUNITY_CLUBS, MAJOR_CLUBS, ALL_CLUBS } from "../lib/clubsData"
 import { uploadAvatarImage } from "../lib/supabaseService"
 import { getActiveUser } from "../lib/tempStore"
 
@@ -291,8 +291,8 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
                       ...prev,
                       major_club: val,
                       major_sport: val === "Sports" ? prev.major_sport : undefined,
-                      minor_sport: val === "Sports" ? prev.minor_sport : undefined,
-                      minor_club: val !== "Sports" && prev.minor_club === val ? undefined : prev.minor_club,
+                      minor_club: prev.minor_club === val ? undefined : prev.minor_club,
+                      minor_sport: prev.minor_club === val ? undefined : prev.minor_sport,
                     }))
                   }}
                   className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none cursor-pointer"
@@ -308,45 +308,47 @@ export default function EditProfileModal({ initialData, onSave, onClose }: Props
                     type="text"
                     value={form.major_sport || ""}
                     onChange={(e) => handleField("major_sport", e.target.value)}
-                    placeholder="Specify your major sport (e.g. Football, Basketball)"
+                    placeholder="Specify your major sport (e.g. Football, Cricket, Badminton)"
                     className="w-full mt-2 px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none"
                   />
                 )}
               </div>
 
-              {/* Minor Field: Minor Sport (if Sports) OR Minor Club (if regular club) */}
-              {form.major_club === "Sports" ? (
-                <div>
-                  <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
-                    Minor Sport
-                  </label>
+              {/* Minor Club / Sport */}
+              <div>
+                <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
+                  Minor Club / Sport
+                </label>
+                <select
+                  value={form.minor_club || ""}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setForm((prev) => ({
+                      ...prev,
+                      minor_club: val,
+                      minor_sport: val === "Sports" ? prev.minor_sport : undefined,
+                    }))
+                  }}
+                  className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none cursor-pointer"
+                >
+                  <option value="">-- None / Select Minor Club --</option>
+                  {ALL_CLUBS.filter((c) => !form.major_club || c !== form.major_club).map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                {form.minor_club === "Sports" && (
                   <input
                     type="text"
                     value={form.minor_sport || ""}
                     onChange={(e) => handleField("minor_sport", e.target.value)}
-                    placeholder="e.g. Badminton, Table Tennis, Swimming (optional)"
-                    className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none"
+                    placeholder="Specify your minor sport (e.g. Table Tennis, Chess, Swimming)"
+                    className="w-full mt-2 px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none"
                   />
-                </div>
-              ) : (
-                <div>
-                  <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
-                    Minor Club
-                  </label>
-                  <select
-                    value={form.minor_club || ""}
-                    onChange={(e) => handleField("minor_club", e.target.value)}
-                    className="w-full px-3 py-2 bg-[#f5f1ea] border-1.5 border-[#141c2b] rounded-xs font-mono text-xs text-[#141c2b] shadow-[1.5px_1.5px_0px_#141c2b] focus:outline-none cursor-pointer"
-                  >
-                    <option value="">-- None / Select Minor Club --</option>
-                    {REGULAR_CLUBS.filter((c) => c !== form.major_club).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Community Club */}
+              {/* Community Club (Exclusively 3 Welfare Clubs) */}
               <div>
                 <label className="block font-mono text-[11px] font-bold text-[#545e6d] mb-1">
                   Community Club

@@ -4,7 +4,7 @@ import { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
 import { saveStudentProfile, uploadAvatarImage } from "../lib/supabaseService"
 import { supabase } from "../lib/supabase"
-import { COMMUNITY_CLUBS, MAJOR_CLUBS, REGULAR_CLUBS } from "../lib/clubsData"
+import { COMMUNITY_CLUBS, MAJOR_CLUBS, ALL_CLUBS } from "../lib/clubsData"
 
 const START_YEARS = [2022, 2023, 2024, 2025, 2026]
 const END_YEARS = [2027, 2028, 2029, 2030, 2031]
@@ -316,8 +316,10 @@ function ProfileSetup() {
                   setMajorClub(val)
                   if (val !== "Sports") {
                     setMajorSport("")
+                  }
+                  if (minorClub === val) {
+                    setMinorClub("")
                     setMinorSport("")
-                    if (minorClub === val) setMinorClub("")
                   }
                 }}
                 className="w-full px-3 py-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] focus:outline-none shadow-[2px_2px_0px_#141c2b] cursor-pointer"
@@ -333,61 +335,62 @@ function ProfileSetup() {
                   type="text"
                   value={majorSport}
                   onChange={(e) => setMajorSport(e.target.value)}
-                  placeholder="Specify your major sport (e.g. Football, Basketball)"
+                  placeholder="Specify your major sport (e.g. Football, Cricket, Badminton)"
                   className="w-full mt-2 px-3.5 py-2 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs text-xs font-mono text-[#141c2b] placeholder-[#8892a0] focus:outline-none shadow-[2px_2px_0px_#141c2b]"
                 />
               )}
             </div>
 
-            {/* Community Club */}
+            {/* Minor Club / Sport */}
             <div>
               <label className="block font-mono text-xs font-bold uppercase text-[#141c2b] mb-1">
-                Community Club
-              </label>
-              <select
-                value={communityClub}
-                onChange={(e) => setCommunityClub(e.target.value)}
-                className="w-full px-3 py-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] focus:outline-none shadow-[2px_2px_0px_#141c2b] cursor-pointer"
-              >
-                <option value="">-- None / Select Community Club --</option>
-                {COMMUNITY_CLUBS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Minor Field: Minor Sport (if Sports) OR Minor Club (if regular club) */}
-          {majorClub === "Sports" ? (
-            <div>
-              <label className="block font-mono text-xs font-bold uppercase text-[#141c2b] mb-1">
-                Minor Sport
-              </label>
-              <input
-                type="text"
-                value={minorSport}
-                onChange={(e) => setMinorSport(e.target.value)}
-                placeholder="e.g. Badminton, Table Tennis, Swimming (optional)"
-                className="w-full px-3.5 py-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs text-xs font-mono text-[#141c2b] placeholder-[#8892a0] focus:outline-none shadow-[2px_2px_0px_#141c2b]"
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="block font-mono text-xs font-bold uppercase text-[#141c2b] mb-1">
-                Minor Club
+                Minor Club / Sport
               </label>
               <select
                 value={minorClub}
-                onChange={(e) => setMinorClub(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setMinorClub(val)
+                  if (val !== "Sports") {
+                    setMinorSport("")
+                  }
+                }}
                 className="w-full px-3 py-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] focus:outline-none shadow-[2px_2px_0px_#141c2b] cursor-pointer"
               >
                 <option value="">-- None / Select Minor Club --</option>
-                {REGULAR_CLUBS.filter((c) => c !== majorClub).map((c) => (
+                {ALL_CLUBS.filter((c) => !majorClub || c !== majorClub).map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
+
+              {minorClub === "Sports" && (
+                <input
+                  type="text"
+                  value={minorSport}
+                  onChange={(e) => setMinorSport(e.target.value)}
+                  placeholder="Specify your minor sport (e.g. Table Tennis, Chess, Swimming)"
+                  className="w-full mt-2 px-3.5 py-2 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs text-xs font-mono text-[#141c2b] placeholder-[#8892a0] focus:outline-none shadow-[2px_2px_0px_#141c2b]"
+                />
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Community Club (Exclusively 3 Welfare Clubs) */}
+          <div>
+            <label className="block font-mono text-xs font-bold uppercase text-[#141c2b] mb-1">
+              Community Club
+            </label>
+            <select
+              value={communityClub}
+              onChange={(e) => setCommunityClub(e.target.value)}
+              className="w-full px-3 py-2.5 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] focus:outline-none shadow-[2px_2px_0px_#141c2b] cursor-pointer"
+            >
+              <option value="">-- None / Select Community Club --</option>
+              {COMMUNITY_CLUBS.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Bio — Mandatory */}

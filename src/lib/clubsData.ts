@@ -6,7 +6,7 @@ export const COMMUNITY_CLUBS = [
   "YRC – Youth Red Cross",
 ]
 
-export const REGULAR_CLUBS = [
+export const ALL_CLUBS = [
   "ACM- Association for Computing Machinery",
   "Agraga- The HR & IR Club",
   "Automobile Club",
@@ -28,10 +28,11 @@ export const REGULAR_CLUBS = [
   "Strokes",
   "TSEC – The Startup And Entrepreneurship Club",
   "Wellness Tribe",
-]
-
-export const MAJOR_CLUBS = [
-  ...REGULAR_CLUBS,
   "Sports",
 ]
+
+export const MAJOR_CLUBS = ALL_CLUBS
+export const MINOR_CLUBS = ALL_CLUBS
+export const REGULAR_CLUBS = ALL_CLUBS.filter((c) => c !== "Sports")
+
 
