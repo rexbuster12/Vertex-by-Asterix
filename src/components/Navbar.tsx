@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react"
-import { Link, NavLink } from "react-router"
-import { Bell } from "lucide-react"
+import { Link, NavLink, useNavigate } from "react-router"
+import { Bell, LogOut } from "lucide-react"
 import {
   getUnreadNotificationCount,
   subscribeToNotifications,
 } from "../lib/notificationStore"
+import { signOutStudent } from "../lib/supabaseService"
 
 function Navbar() {
+  const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -17,6 +19,11 @@ function Navbar() {
     })
     return () => unsubscribe()
   }, [])
+
+  async function handleLogout() {
+    await signOutStudent()
+    navigate("/login", { replace: true })
+  }
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     `text-xs font-mono uppercase tracking-[0.1em] font-bold px-3.5 py-2 rounded-sm transition-all ${isActive
@@ -61,7 +68,7 @@ function Navbar() {
             </NavLink>
           </nav>
 
-          {/* Right Navigation: Notifications & My Profile pushed to far right */}
+          {/* Right Navigation: Notifications, My Profile, Log Out */}
           <div className="hidden md:flex items-center gap-2.5 ml-auto">
             <NavLink
               to="/notifications"
@@ -85,6 +92,15 @@ function Navbar() {
             <NavLink to="/profile" className={navLinkClass}>
               My Profile
             </NavLink>
+
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono font-bold uppercase tracking-[0.05em] text-[#d84c23] bg-[#faf7f2] hover:bg-[#d84c23] hover:text-white border-2 border-[#141c2b] rounded-sm shadow-[2px_2px_0px_#141c2b] transition-all cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Log Out</span>
+            </button>
           </div>
 
           {/* Mobile Menu Button */}
@@ -145,7 +161,7 @@ function Navbar() {
               My Profile
             </NavLink>
           </nav>
-          <div className="pt-2">
+          <div className="pt-2 flex flex-col gap-2">
             <Link
               to="/create-community"
               onClick={() => setIsMobileMenuOpen(false)}
@@ -153,6 +169,17 @@ function Navbar() {
             >
               + Create Community
             </Link>
+
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false)
+                handleLogout()
+              }}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-mono font-bold uppercase tracking-[0.05em] text-[#d84c23] bg-[#fbe8e6] hover:bg-[#d84c23] hover:text-white border-2 border-[#141c2b] rounded-sm shadow-[2px_2px_0px_#141c2b] transition-all cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Log Out</span>
+            </button>
           </div>
         </div>
       )}

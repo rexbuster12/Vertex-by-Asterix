@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react"
-import { Link, useSearchParams } from "react-router"
+import { Link, useSearchParams, useNavigate } from "react-router"
+import { LogOut } from "lucide-react"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
 import { getActiveProfile, setActiveProfile } from "../lib/tempStore"
-import { saveStudentProfile } from "../lib/supabaseService"
+import { saveStudentProfile, signOutStudent } from "../lib/supabaseService"
 
 function Profile() {
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const previewParam = searchParams.get("preview")
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -42,6 +44,11 @@ function Profile() {
       setProfile(null)
     }
   }, [previewParam])
+
+  async function handleLogout() {
+    await signOutStudent()
+    navigate("/login", { replace: true })
+  }
 
   async function handleSave(data: ProfileData) {
     setProfile(data)
@@ -230,6 +237,13 @@ function Profile() {
                 >
                   + Create Community
                 </Link>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-mono font-bold uppercase tracking-[0.05em] text-[#d84c23] bg-[#fbe8e6] hover:bg-[#d84c23] hover:text-white border-2 border-[#141c2b] rounded-sm shadow-[2px_2px_0px_#141c2b] transition-all cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Log Out</span>
+                </button>
               </div>
             )}
           </div>
