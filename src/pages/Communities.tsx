@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router"
 import { Search, PlusCircle, CheckSquare, Square, Layers, CheckCircle2, Compass } from "lucide-react"
 import CommunityCard, { type CommunityCardProps } from "../components/CommunityCard"
 import { getStoredCommunities } from "../lib/mockStore"
-import { fetchCommunitiesFromDb } from "../lib/supabaseService"
+import { fetchCommunitiesFromDb, fetchUserJoinedCommunityNames } from "../lib/supabaseService"
 import { getActiveUser, getActiveProfile } from "../lib/tempStore"
 
 type CommunityFilterType = "all" | "joined" | "non-joined"
@@ -14,7 +14,7 @@ function Communities() {
   const [filterType, setFilterType] = useState<CommunityFilterType>(
     initialFilter === "joined" || initialFilter === "non-joined" ? initialFilter : "all"
   )
-  const [communities, setCommunities] = useState<(CommunityCardProps & { isJoined?: boolean })[]>([])
+  const [communities, setCommunities] = useState<(CommunityCardProps & { isJoined?: boolean; isHead?: boolean })[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "")
 
@@ -30,14 +30,22 @@ function Communities() {
     async function loadCommunities() {
       const user = getActiveUser()
       const profile = getActiveProfile()
+      const joinedNamesList = await fetchUserJoinedCommunityNames()
+      const joinedSet = new Set(joinedNamesList.map((n) => n.toLowerCase()))
 
-      function checkIsJoined(c: any): boolean {
+      function checkIsHead(c: any): boolean {
         if (!user && !profile) return false
         if (c.created_by && user && c.created_by === user.id) return true
         if (c.created_by_name && profile && c.created_by_name.toLowerCase() === profile.display_name?.toLowerCase()) return true
         if (c.created_by?.name && profile && c.created_by.name.toLowerCase() === profile.display_name?.toLowerCase()) return true
+        return false
+      }
+
+      function checkIsJoined(c: any): boolean {
+        if (checkIsHead(c)) return true
+        const cleanName = (c.name || "").trim().toLowerCase()
+        if (joinedSet.has(cleanName)) return true
         if (c.members && Array.isArray(c.members) && profile && c.members.some((m: any) => m.name?.toLowerCase() === profile.display_name?.toLowerCase())) return true
-        if (c.name?.toLowerCase() === "chess community") return true
         return false
       }
 
@@ -52,6 +60,7 @@ function Communities() {
         whatsapp_link: c.whatsapp_link,
         instagram_link: c.instagram_link,
         image: c.image,
+        isHead: checkIsHead(c),
         isJoined: checkIsJoined(c),
       }))
       setCommunities(mappedLocal)
@@ -69,6 +78,7 @@ function Communities() {
             whatsapp_link: c.whatsapp_link,
             instagram_link: c.instagram_link,
             image: c.image,
+            isHead: checkIsHead(c),
             isJoined: checkIsJoined(c),
           }))
 
@@ -172,11 +182,10 @@ function Communities() {
             {/* 1. All Communities */}
             <button
               onClick={() => handleFilterChange("all")}
-              className={`w-full flex items-center justify-between p-3 rounded-xs border-2 text-left transition-all cursor-pointer ${
-                filterType === "all"
+              className={`w-full flex items-center justify-between p-3 rounded-xs border-2 text-left transition-all cursor-pointer ${filterType === "all"
                   ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[2px_2px_0px_#d84c23]"
                   : "bg-[#f5f1ea] text-[#141c2b] border-[#141c2b] hover:bg-white"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 {filterType === "all" ? (
@@ -187,9 +196,8 @@ function Communities() {
                 <span className="font-mono text-xs font-bold uppercase">All Communities</span>
               </div>
               <span
-                className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-2xs ${
-                  filterType === "all" ? "bg-white/20 text-white" : "bg-[#eae2d5] text-[#141c2b]"
-                }`}
+                className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-2xs ${filterType === "all" ? "bg-white/20 text-white" : "bg-[#eae2d5] text-[#141c2b]"
+                  }`}
               >
                 {counts.total}
               </span>
@@ -198,11 +206,10 @@ function Communities() {
             {/* 2. Joined Communities */}
             <button
               onClick={() => handleFilterChange("joined")}
-              className={`w-full flex items-center justify-between p-3 rounded-xs border-2 text-left transition-all cursor-pointer ${
-                filterType === "joined"
+              className={`w-full flex items-center justify-between p-3 rounded-xs border-2 text-left transition-all cursor-pointer ${filterType === "joined"
                   ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[2px_2px_0px_#d84c23]"
                   : "bg-[#f5f1ea] text-[#141c2b] border-[#141c2b] hover:bg-white"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 {filterType === "joined" ? (
@@ -213,9 +220,8 @@ function Communities() {
                 <span className="font-mono text-xs font-bold uppercase">Joined Hubs</span>
               </div>
               <span
-                className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-2xs ${
-                  filterType === "joined" ? "bg-white/20 text-white" : "bg-[#eae2d5] text-[#141c2b]"
-                }`}
+                className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-2xs ${filterType === "joined" ? "bg-white/20 text-white" : "bg-[#eae2d5] text-[#141c2b]"
+                  }`}
               >
                 {counts.joined}
               </span>
@@ -224,11 +230,10 @@ function Communities() {
             {/* 3. Non-Joined Communities */}
             <button
               onClick={() => handleFilterChange("non-joined")}
-              className={`w-full flex items-center justify-between p-3 rounded-xs border-2 text-left transition-all cursor-pointer ${
-                filterType === "non-joined"
+              className={`w-full flex items-center justify-between p-3 rounded-xs border-2 text-left transition-all cursor-pointer ${filterType === "non-joined"
                   ? "bg-[#141c2b] text-white border-[#141c2b] shadow-[2px_2px_0px_#d84c23]"
                   : "bg-[#f5f1ea] text-[#141c2b] border-[#141c2b] hover:bg-white"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 {filterType === "non-joined" ? (
@@ -239,17 +244,12 @@ function Communities() {
                 <span className="font-mono text-xs font-bold uppercase">Explore New</span>
               </div>
               <span
-                className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-2xs ${
-                  filterType === "non-joined" ? "bg-white/20 text-white" : "bg-[#eae2d5] text-[#141c2b]"
-                }`}
+                className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-2xs ${filterType === "non-joined" ? "bg-white/20 text-white" : "bg-[#eae2d5] text-[#141c2b]"
+                  }`}
               >
                 {counts.nonJoined}
               </span>
             </button>
-          </div>
-
-          <div className="pt-2 border-t border-[#d8cebe] text-[11px] font-mono text-[#545e6d]">
-            💡 Select <b className="text-[#141c2b]">Joined Hubs</b> to see communities you are participating in.
           </div>
         </div>
 
@@ -266,8 +266,8 @@ function Communities() {
                   {filterType === "joined"
                     ? "Showing Joined Communities"
                     : filterType === "non-joined"
-                    ? "Showing New Communities"
-                    : "Showing All Communities"}
+                      ? "Showing New Communities"
+                      : "Showing All Communities"}
                 </span>
               </span>
               <span className="text-[#d84c23]">{filteredCommunities.length} ACTIVE HUBS</span>
@@ -303,7 +303,24 @@ function Communities() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {filteredCommunities.map((item, idx) => (
                 <div key={item.id ?? idx} className="h-full">
-                  <CommunityCard {...item} />
+                  <CommunityCard
+                    {...item}
+                    onToggleJoin={(name, nextJoined) => {
+                      setCommunities((prev) =>
+                        prev.map((c) =>
+                          c.name.toLowerCase() === name.toLowerCase()
+                            ? {
+                                ...c,
+                                isJoined: nextJoined,
+                                members_count: nextJoined
+                                  ? (c.members_count || 1) + 1
+                                  : Math.max(1, (c.members_count || 1) - 1),
+                              }
+                            : c
+                        )
+                      )
+                    }}
+                  />
                 </div>
               ))}
             </div>
@@ -313,8 +330,8 @@ function Communities() {
                 {filterType === "joined"
                   ? "No joined communities yet"
                   : searchQuery
-                  ? `No communities found for "${searchQuery}"`
-                  : "No communities found in this view"}
+                    ? `No communities found for "${searchQuery}"`
+                    : "No communities found in this view"}
               </h3>
               <p className="text-xs text-[#545e6d] font-mono max-w-md mx-auto">
                 {filterType === "joined"

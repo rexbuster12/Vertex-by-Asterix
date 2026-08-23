@@ -1,6 +1,9 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link } from "react-router"
+import { Crown, LogOut, Users } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon } from "./Icons"
+import { joinCommunityInDb, leaveCommunityInDb } from "../lib/supabaseService"
+import { addNotification } from "../lib/notificationStore"
 
 export type CommunityCardProps = {
   id?: string | number
@@ -12,6 +15,9 @@ export type CommunityCardProps = {
   instagram_link?: string
   image?: string
   isPreview?: boolean
+  isJoined?: boolean
+  isHead?: boolean
+  onToggleJoin?: (name: string, nextJoined: boolean) => void
 }
 
 const DEFAULT_CAMPUS_BANNER = "/default-banner.jpg"
@@ -25,18 +31,54 @@ function CommunityCard({
   instagram_link,
   image,
   isPreview = false,
+  isJoined: initialIsJoined = false,
+  isHead = false,
+  onToggleJoin,
 }: CommunityCardProps) {
   const initialMembers = members_count ?? members ?? 1
-  const [joined, setJoined] = useState(false)
+  const [joined, setJoined] = useState(isHead || initialIsJoined)
   const [memberCount, setMemberCount] = useState(initialMembers)
+  const [isJoining, setIsJoining] = useState(false)
 
-  const handleToggleJoin = () => {
-    if (joined) {
-      setJoined(false)
-      setMemberCount((prev) => Math.max(0, prev - 1))
-    } else {
-      setJoined(true)
-      setMemberCount((prev) => prev + 1)
+  useEffect(() => {
+    setJoined(isHead || initialIsJoined)
+  }, [isHead, initialIsJoined])
+
+  useEffect(() => {
+    setMemberCount(members_count ?? members ?? 1)
+  }, [members_count, members])
+
+  const handleToggleJoin = async () => {
+    if (isHead || isJoining) return
+
+    setIsJoining(true)
+    const nextJoined = !joined
+    setJoined(nextJoined)
+    setMemberCount((prev) => (nextJoined ? prev + 1 : Math.max(1, prev - 1)))
+
+    if (onToggleJoin) {
+      onToggleJoin(name, nextJoined)
+    }
+
+    try {
+      if (nextJoined) {
+        await joinCommunityInDb(name)
+        addNotification({
+          type: "member_joined",
+          title: `Joined ${name}`,
+          message: `You joined ${name}. You will receive announcements from this hub.`,
+          linkUrl: `/communities/${encodeURIComponent(name)}`,
+          communityName: name,
+        })
+      } else {
+        await leaveCommunityInDb(name)
+      }
+    } catch (err) {
+      console.warn("Toggle join error:", err)
+    } finally {
+      setTimeout(() => {
+        setIsJoining(false)
+      }, 600)
     }
   }
 
@@ -49,7 +91,6 @@ function CommunityCard({
       .toUpperCase() || "CM"
 
   const photoUrl = image || DEFAULT_CAMPUS_BANNER
-
   const hasSocialLinks = !!(whatsapp_link || instagram_link)
 
   return (
@@ -66,12 +107,17 @@ function CommunityCard({
 
       {/* Community Card Body */}
       <div className="flex flex-col flex-1 p-5 space-y-3">
-        <div className="flex items-center justify-between font-mono text-xs font-bold text-[#545e6d] uppercase tracking-wider">
+        {/* Top Header: Clean Member Counter & Head Tag */}
+        <div className="flex items-center justify-between font-mono text-xs font-bold uppercase tracking-wider">
           <span className="text-[#141c2b] flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#25D366] inline-block" />
-            {memberCount} Active
+            <Users className="w-3.5 h-3.5 text-[#d84c23]" />
+            <span>{memberCount === 1 ? "1 Member" : `${memberCount} Members`}</span>
           </span>
-          <span>{memberCount === 1 ? "1 Member" : `${memberCount} Members`}</span>
+          {isHead && (
+            <span className="font-mono text-[10px] font-black uppercase px-2 py-0.5 bg-[#141c2b] text-white border border-[#141c2b] rounded-2xs flex items-center gap-1 shadow-[1px_1px_0px_#d84c23]">
+              <Crown className="w-2.5 h-2.5 text-[#d84c23]" /> Head
+            </span>
+          )}
         </div>
 
         <h3 className="font-serif text-xl sm:text-2xl font-black text-[#141c2b] leading-snug">
@@ -101,17 +147,28 @@ function CommunityCard({
               >
                 View Community
               </Link>
-              <button
-                type="button"
-                onClick={handleToggleJoin}
-                className={`font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-2 border-[#141c2b] cursor-pointer transition-colors ${
-                  joined
-                    ? "bg-[#eae2d5] text-[#141c2b] shadow-[1px_1px_0px_#141c2b]"
-                    : "bg-[#faf7f2] text-[#141c2b] shadow-[2px_2px_0px_#141c2b] hover:bg-white"
-                }`}
-              >
-                {joined ? "Joined ✓" : "+ Join"}
-              </button>
+
+              {isHead ? (
+                <span className="font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-2 border-[#141c2b] bg-[#eae2d5] text-[#141c2b] flex items-center gap-1 shadow-[1px_1px_0px_#141c2b]">
+                  <Crown className="w-3.5 h-3.5 text-[#d84c23]" />
+                  <span>Head</span>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={isJoining}
+                  onClick={handleToggleJoin}
+                  className={`font-mono text-xs font-bold uppercase px-3 py-1.5 rounded-xs border-2 border-[#141c2b] cursor-pointer transition-all flex items-center gap-1.5 ${
+                    joined
+                      ? "bg-[#fbe8e6] text-[#d84c23] hover:bg-[#d84c23] hover:text-white shadow-[2px_2px_0px_#141c2b]"
+                      : "bg-[#faf7f2] text-[#141c2b] shadow-[2px_2px_0px_#141c2b] hover:bg-[#141c2b] hover:text-white"
+                  } ${isJoining ? "opacity-75 cursor-not-allowed" : ""}`}
+                  title={joined ? "Leave this community" : "Join this community"}
+                >
+                  {joined && <LogOut className="w-3.5 h-3.5" />}
+                  <span>{isJoining ? "..." : joined ? "Leave" : "+ Join"}</span>
+                </button>
+              )}
             </div>
 
             {hasSocialLinks && (

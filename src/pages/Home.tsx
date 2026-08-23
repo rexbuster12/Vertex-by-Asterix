@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router"
 import { Megaphone } from "lucide-react"
 import CommunityCard, { type CommunityCardProps } from "../components/CommunityCard"
 import { getStoredCommunities } from "../lib/mockStore"
-import { fetchCommunitiesFromDb } from "../lib/supabaseService"
+import { fetchCommunitiesFromDb, fetchUserJoinedCommunityNames } from "../lib/supabaseService"
+import { getActiveUser, getActiveProfile } from "../lib/tempStore"
 import { supabase } from "../lib/supabase"
 
 interface HomeAnnouncement {
@@ -21,7 +22,7 @@ interface HomeAnnouncement {
 
 function Home() {
   const navigate = useNavigate()
-  const [dbCommunities, setDbCommunities] = useState<CommunityCardProps[]>([])
+  const [dbCommunities, setDbCommunities] = useState<(CommunityCardProps & { isJoined?: boolean; isHead?: boolean })[]>([])
   const [announcements, setAnnouncements] = useState<HomeAnnouncement[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [loading, setLoading] = useState(true)
@@ -30,9 +31,30 @@ function Home() {
     async function loadHomeData() {
       try {
         setLoading(true)
+        const user = getActiveUser()
+        const profile = getActiveProfile()
+        const joinedNamesList = await fetchUserJoinedCommunityNames()
+        const joinedSet = new Set(joinedNamesList.map((n) => n.toLowerCase()))
+
+        function checkIsHead(c: any): boolean {
+          if (!user && !profile) return false
+          if (c.created_by && user && c.created_by === user.id) return true
+          if (c.created_by_name && profile && c.created_by_name.toLowerCase() === profile.display_name?.toLowerCase()) return true
+          if (c.created_by?.name && profile && c.created_by.name.toLowerCase() === profile.display_name?.toLowerCase()) return true
+          return false
+        }
+
+        function checkIsJoined(c: any): boolean {
+          if (checkIsHead(c)) return true
+          const cleanName = (c.name || "").trim().toLowerCase()
+          if (joinedSet.has(cleanName)) return true
+          if (c.members && Array.isArray(c.members) && profile && c.members.some((m: any) => m.name?.toLowerCase() === profile.display_name?.toLowerCase())) return true
+          return false
+        }
+
         // 1. Load local cache
         const localList = getStoredCommunities()
-        let mapped: CommunityCardProps[] = localList.map((c) => ({
+        let mapped: (CommunityCardProps & { isJoined?: boolean; isHead?: boolean })[] = localList.map((c) => ({
           id: c.id,
           name: c.name,
           description: c.description,
@@ -41,6 +63,8 @@ function Home() {
           whatsapp_link: c.whatsapp_link,
           instagram_link: c.instagram_link,
           image: c.image,
+          isHead: checkIsHead(c),
+          isJoined: checkIsJoined(c),
         }))
 
         // Collect local announcements
@@ -68,7 +92,7 @@ function Home() {
         try {
           const remoteComms = await fetchCommunitiesFromDb()
           if (remoteComms && Array.isArray(remoteComms) && remoteComms.length > 0) {
-            const mappedRemote: CommunityCardProps[] = remoteComms.map((c) => ({
+            const mappedRemote: (CommunityCardProps & { isJoined?: boolean; isHead?: boolean })[] = remoteComms.map((c) => ({
               id: c.id || c.name,
               name: c.name,
               description: c.description,
@@ -77,6 +101,8 @@ function Home() {
               whatsapp_link: c.whatsapp_link,
               instagram_link: c.instagram_link,
               image: c.image,
+              isHead: checkIsHead(c),
+              isJoined: checkIsJoined(c),
             }))
 
             const seen = new Set<string>()

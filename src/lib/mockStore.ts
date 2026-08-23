@@ -8,7 +8,8 @@ export interface CommunityMember {
   batch: string
   avatar_url?: string
   is_founder?: boolean
-  role?: "founder" | "co-leader" | "member"
+  is_head?: boolean
+  role?: "founder" | "head" | "co-leader" | "member"
 }
 
 export interface CommunityAnnouncement {

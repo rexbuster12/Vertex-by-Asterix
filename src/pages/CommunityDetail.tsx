@@ -20,6 +20,7 @@ import {
   ThumbsDown,
   UserMinus,
   Flag,
+  LogOut,
 } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon } from "../components/Icons"
 import EditCommunityModal from "../components/EditCommunityModal"
@@ -40,7 +41,14 @@ import {
 } from "../lib/mockStore"
 import { getActiveProfile, getActiveUser } from "../lib/tempStore"
 import { addNotification } from "../lib/notificationStore"
-import { fetchCommunityDetailFromDb, deleteCommunityInDb, deleteAnnouncementInDb } from "../lib/supabaseService"
+import {
+  fetchCommunityDetailFromDb,
+  deleteCommunityInDb,
+  deleteAnnouncementInDb,
+  joinCommunityInDb,
+  leaveCommunityInDb,
+  fetchUserJoinedCommunityNames,
+} from "../lib/supabaseService"
 import { supabase } from "../lib/supabase"
 
 const FALLBACK_COVER = "/default-banner.jpg"
@@ -66,7 +74,7 @@ function CommunityDetail() {
   const [kickReason, setKickReason] = useState("Violation of community guidelines or inactivity.")
   const [isKickModalOpen, setIsKickModalOpen] = useState(false)
 
-  // Founder Departure / Handover Modal State
+  // Head Departure / Handover Modal State
   const [isFounderDepartureOpen, setIsFounderDepartureOpen] = useState(false)
   const [selectedSuccessorId, setSelectedSuccessorId] = useState("")
 
@@ -81,17 +89,20 @@ function CommunityDetail() {
       }
 
       const decoded = decodeURIComponent(communityName).trim()
+      const joinedNamesList = await fetchUserJoinedCommunityNames()
+      const joinedSet = new Set(joinedNamesList.map((n) => n.toLowerCase()))
 
       // 1. Check local cache first for instant render
       const localFound = findCommunityByName(decoded)
       if (localFound) {
         setCommunity(localFound)
         setMemberCount(localFound.members_count || localFound.members?.length || 1)
-        const isUserFounder = Boolean(
+        const isUserHead = Boolean(
           (activeProfile?.display_name && localFound.created_by?.name && activeProfile.display_name.trim().toLowerCase() === localFound.created_by.name.trim().toLowerCase()) ||
           (activeUser?.id && localFound.created_by && (localFound.created_by as any) === activeUser.id)
         )
-        if (isUserFounder) setJoined(true)
+        const isUserMember = isUserHead || joinedSet.has(localFound.name.toLowerCase()) || (localFound.members && localFound.members.some((m: any) => m.id === activeUser?.id || (activeProfile?.display_name && m.name.toLowerCase() === activeProfile.display_name.toLowerCase())))
+        if (isUserMember) setJoined(true)
       }
 
       // 2. Fetch live data from Supabase
@@ -100,11 +111,12 @@ function CommunityDetail() {
         if (remoteCommunity) {
           setCommunity(remoteCommunity as MockCommunity)
           setMemberCount(remoteCommunity.members_count || remoteCommunity.members?.length || 1)
-          const isUserFounder = Boolean(
+          const isUserHead = Boolean(
             (activeProfile?.display_name && remoteCommunity.created_by?.name && activeProfile.display_name.trim().toLowerCase() === remoteCommunity.created_by.name.trim().toLowerCase()) ||
             (activeUser?.id && remoteCommunity.created_by && (remoteCommunity.created_by as any) === activeUser.id)
           )
-          if (isUserFounder) setJoined(true)
+          const isUserMember = isUserHead || joinedSet.has(remoteCommunity.name.toLowerCase()) || (remoteCommunity.members && remoteCommunity.members.some((m: any) => m.id === activeUser?.id || (activeProfile?.display_name && m.name.toLowerCase() === activeProfile.display_name.toLowerCase())))
+          if (isUserMember) setJoined(true)
         } else if (!localFound) {
           setCommunity(null)
         }
@@ -118,20 +130,21 @@ function CommunityDetail() {
     loadCommunity()
   }, [communityName])
 
-  // Check roles
-  const isFounder = Boolean(
+  // Check roles (Head of Community)
+  const isHead = Boolean(
     community &&
     ((activeProfile?.display_name &&
       community.created_by?.name &&
       activeProfile.display_name.trim().toLowerCase() === community.created_by.name.trim().toLowerCase()) ||
      (activeUser?.id && (community.created_by as any) === activeUser.id))
   )
+  const isFounder = isHead // Alias for Head of Community
 
   const handleToggleJoin = async () => {
     if (!community || isJoining) return
 
-    // If Founder clicks leave, open departure handover modal
-    if (isFounder) {
+    // If Head clicks leave, open departure handover modal
+    if (isHead) {
       setIsFounderDepartureOpen(true)
       return
     }
@@ -145,6 +158,7 @@ function CommunityDetail() {
         if (activeProfile?.display_name) {
           removeCommunityMember(community.name, activeProfile.display_name)
         }
+        await leaveCommunityInDb(community.id || community.name)
       } else {
         setJoined(true)
         setMemberCount((prev) => prev + 1)
@@ -155,11 +169,14 @@ function CommunityDetail() {
           linkUrl: `/communities/${encodeURIComponent(community.name)}`,
           communityName: community.name,
         })
+        await joinCommunityInDb(community.id || community.name)
       }
+    } catch (err) {
+      console.warn("Toggle join notice:", err)
     } finally {
       setTimeout(() => {
         setIsJoining(false)
-      }, 800)
+      }, 700)
     }
   }
 
@@ -189,14 +206,15 @@ function CommunityDetail() {
     setMemberToKick(null)
   }
 
-  const handleFounderTransferAndLeave = () => {
+  const handleFounderTransferAndLeave = async () => {
     if (!community || !selectedSuccessorId) return
     const updated = transferCommunityFounder(community.name, selectedSuccessorId)
     if (updated) {
-      // Now remove previous founder from member list
+      // Now remove previous head from member list
       if (activeProfile?.display_name) {
         removeCommunityMember(community.name, activeProfile.display_name)
       }
+      await leaveCommunityInDb(community.id || community.name)
       setJoined(false)
       setMemberCount((prev) => Math.max(1, prev - 1))
       setIsFounderDepartureOpen(false)
@@ -547,24 +565,27 @@ function CommunityDetail() {
             {community.description}
           </p>
 
-          {/* Action Row: Founder Status / Join + WhatsApp + Instagram */}
+          {/* Action Row: Head Status / Join + WhatsApp + Instagram */}
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            {isCreator ? (
+            {isHead ? (
               <div className="flex items-center gap-1.5 px-4 py-3 bg-[#eae2d5] border-2 border-[#141c2b] text-[#141c2b] font-mono text-xs font-bold uppercase rounded-xs shadow-[2px_2px_0px_#141c2b]">
                 <Crown className="w-4 h-4 text-[#d84c23]" />
-                <span>Founder (Joined ✓)</span>
+                <span>Head of Community (Joined ✓)</span>
               </div>
             ) : (
               <button
                 type="button"
                 disabled={isJoining}
                 onClick={handleToggleJoin}
-                className={`primary-action font-mono text-xs uppercase font-bold tracking-wider cursor-pointer ${
-                  joined ? "bg-[#eae2d5] text-[#141c2b] border-[#141c2b]" : ""
+                className={`font-mono text-xs font-bold uppercase tracking-wider px-5 py-3 rounded-xs border-2 transition-all flex items-center gap-2 cursor-pointer ${
+                  joined
+                    ? "bg-[#fbe8e6] text-[#d84c23] hover:bg-[#d84c23] hover:text-white border-[#141c2b] shadow-[3px_3px_0px_#141c2b]"
+                    : "bg-[#141c2b] text-white hover:bg-[#d84c23] border-[#141c2b] shadow-[3px_3px_0px_#d84c23]"
                 } ${isJoining ? "opacity-75 cursor-not-allowed" : ""}`}
-                style={{ padding: "0.75rem 1.5rem" }}
+                title={joined ? "Leave this community" : "Join this community"}
               >
-                {isJoining ? "Updating..." : joined ? "Joined ✓" : "+ Join Community"}
+                {joined && <LogOut className="w-4 h-4" />}
+                <span>{isJoining ? "Updating..." : joined ? "Leave Community" : "+ Join Community"}</span>
               </button>
             )}
 
@@ -813,11 +834,11 @@ function CommunityDetail() {
                                 {member.name}
                               </h4>
                               {isMemberFounder ? (
-                                <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#d84c23] text-white rounded-2xs flex items-center gap-0.5">
-                                  <Crown className="w-2.5 h-2.5" /> Founder
+                                <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#d84c23] text-white rounded-2xs flex items-center gap-0.5 shadow-[1px_1px_0px_#141c2b]">
+                                  <Crown className="w-2.5 h-2.5" /> Head
                                 </span>
                               ) : isMemberCoLeader ? (
-                                <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#2b59ff] text-white rounded-2xs flex items-center gap-0.5">
+                                <span className="font-mono text-[9px] font-black uppercase px-1.5 py-0.2 bg-[#2b59ff] text-white rounded-2xs flex items-center gap-0.5 shadow-[1px_1px_0px_#141c2b]">
                                   <ShieldCheck className="w-2.5 h-2.5" /> Co-Leader
                                 </span>
                               ) : null}
@@ -951,14 +972,14 @@ function CommunityDetail() {
         </div>
       )}
 
-      {/* ── FOUNDER DEPARTURE / HANDOVER MODAL ────────────────────── */}
+      {/* ── HEAD DEPARTURE / HANDOVER MODAL ────────────────────── */}
       {isFounderDepartureOpen && (
         <div className="fixed inset-0 z-[999] bg-[#141c2b]/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-[#faf7f2] border-2 border-[#141c2b] rounded-lg max-w-lg w-full p-6 shadow-[8px_8px_0px_#141c2b] space-y-5">
             <div className="flex items-center justify-between border-b border-[#d8cebe] pb-2.5">
               <div>
                 <span className="font-mono text-[10px] font-bold text-[#d84c23] uppercase">
-                  FOUNDER ACTIONS // DEPARTURE & HANDOVER
+                  HEAD ACTIONS // DEPARTURE & HANDOVER
                 </span>
                 <h3 className="font-serif text-2xl font-black text-[#141c2b]">
                   Leave Community
@@ -973,15 +994,15 @@ function CommunityDetail() {
             </div>
 
             <p className="text-xs text-[#545e6d] leading-relaxed">
-              As the <b>Founder & Leader</b> of <b>{community.name}</b>, you cannot simply leave. You must choose to either <b>permanently delete the community</b> or <b>hand over founder leadership</b> to another member.
+              As the <b>Head & Leader</b> of <b>{community.name}</b>, you cannot simply leave without resolving leadership. You must choose to either <b>permanently delete the community</b> or <b>hand over Head leadership</b> to another member.
             </p>
 
             {/* Choice 1: Transfer Leadership */}
-            {community.members && community.members.filter((m) => !m.is_founder).length > 0 ? (
+            {community.members && community.members.filter((m) => !m.is_founder && !m.is_head).length > 0 ? (
               <div className="p-4 bg-[#f5f1ea] border-2 border-[#141c2b] rounded-xs space-y-3 shadow-[2px_2px_0px_#141c2b]">
                 <h4 className="font-serif font-bold text-sm text-[#141c2b] flex items-center gap-1.5">
                   <Crown className="w-4 h-4 text-[#d84c23]" />
-                  <span>Option A: Transfer Founder Role & Leave</span>
+                  <span>Option A: Transfer Head Role & Leave</span>
                 </h4>
                 <div className="space-y-1.5">
                   <label className="block font-mono text-[11px] font-bold uppercase text-[#545e6d]">
@@ -992,9 +1013,9 @@ function CommunityDetail() {
                     onChange={(e) => setSelectedSuccessorId(e.target.value)}
                     className="w-full px-3 py-2 bg-white border-2 border-[#141c2b] rounded-xs font-mono text-xs font-bold text-[#141c2b] focus:outline-none cursor-pointer"
                   >
-                    <option value="">-- Choose Member to Promote to Founder --</option>
+                    <option value="">-- Choose Member to Promote to Head --</option>
                     {community.members
-                      .filter((m) => !m.is_founder)
+                      .filter((m) => !m.is_founder && !m.is_head)
                       .map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.name} ({m.branch} • {m.batch})
@@ -1013,7 +1034,7 @@ function CommunityDetail() {
                   }`}
                 >
                   <Crown className="w-3.5 h-3.5" />
-                  <span>Transfer Leadership & Leave Community</span>
+                  <span>Transfer Head Role & Leave Community</span>
                 </button>
               </div>
             ) : (

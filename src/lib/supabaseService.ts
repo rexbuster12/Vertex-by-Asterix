@@ -438,7 +438,7 @@ async function formatCommunityPayload(comm: any) {
   const activeUser = getActiveUser()
 
   let creatorInfo = {
-    name: comm.created_by_name || activeProfile?.display_name || activeUser?.name || "Campus Founder",
+    name: comm.created_by_name || activeProfile?.display_name || activeUser?.name || "Campus Head",
     branch: activeProfile?.branch || "BML Munjal University",
     batch: activeProfile?.batch || "Student",
     email: comm.created_by_email || activeUser?.email || undefined as string | undefined,
@@ -466,11 +466,70 @@ async function formatCommunityPayload(comm: any) {
     }
   }
 
+  // Fetch real members from community_members table
+  let membersList: any[] = []
+  try {
+    const { data: memberRows } = await supabase
+      .from("community_members")
+      .select("id, user_id, role, created_at")
+      .eq("community_id", comm.id)
+
+    if (memberRows && memberRows.length > 0) {
+      const userIds = memberRows.map((m) => m.user_id).filter(Boolean)
+      const profileMap = new Map<string, any>()
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("*")
+          .in("id", userIds)
+        if (profs) {
+          for (const p of profs) {
+            profileMap.set(p.id, p)
+          }
+        }
+      }
+
+      membersList = memberRows.map((m) => {
+        const p = profileMap.get(m.user_id)
+        const isHeadRole = m.role === "founder" || m.role === "head"
+        return {
+          id: m.user_id || m.id,
+          name: p?.display_name || (isHeadRole ? creatorInfo.name : "Student Member"),
+          branch: p?.branch || (isHeadRole ? creatorInfo.branch : "BML Munjal University"),
+          batch: p?.batch || (isHeadRole ? creatorInfo.batch : "Student"),
+          avatar_url: p?.avatar_url || (isHeadRole ? creatorInfo.avatar_url : undefined),
+          is_founder: isHeadRole,
+          is_head: isHeadRole,
+          role: isHeadRole ? "head" : m.role || "member",
+        }
+      })
+    }
+  } catch (err) {
+    console.warn("Could not load community members from DB:", err)
+  }
+
+  // Ensure Head is included as first member
+  const hasHead = membersList.some((m) => m.is_head || m.is_founder)
+  if (!hasHead) {
+    membersList.unshift({
+      id: comm.created_by || "head",
+      name: creatorInfo.name,
+      branch: creatorInfo.branch,
+      batch: creatorInfo.batch,
+      avatar_url: creatorInfo.avatar_url,
+      is_founder: true,
+      is_head: true,
+      role: "head" as const,
+    })
+  }
+
+  const finalMemberCount = Math.max(comm.members_count || 1, membersList.length)
+
   return {
     id: comm.id,
     name: comm.name,
     description: comm.description,
-    members_count: comm.members_count || 1,
+    members_count: finalMemberCount,
     whatsapp_link: comm.whatsapp_link,
     instagram_link: comm.instagram_link,
     image: comm.image || "/default-banner.jpg",
@@ -493,18 +552,163 @@ async function formatCommunityPayload(comm: any) {
       likes: a.likes || 0,
       dislikes: a.dislikes || 0,
     })),
-    members: [
-      {
-        id: comm.created_by || "founder",
-        name: creatorInfo.name,
-        branch: creatorInfo.branch,
-        batch: creatorInfo.batch,
-        avatar_url: creatorInfo.avatar_url,
-        is_founder: true,
-        role: "founder" as const,
-      },
-    ],
+    members: membersList,
   }
+}
+
+export async function joinCommunityInDb(
+  communityIdOrName: string
+): Promise<{ success: boolean; members_count?: number }> {
+  const user = getCachedUser()
+  const clean = decodeURIComponent(communityIdOrName).trim()
+
+  try {
+    let commId = clean
+    let currentMembersCount = 1
+    if (!isUUID(clean)) {
+      const { data: comm } = await supabase
+        .from("communities")
+        .select("id, members_count")
+        .ilike("name", clean)
+        .maybeSingle()
+      if (comm?.id) {
+        commId = comm.id
+        currentMembersCount = comm.members_count || 1
+      }
+    }
+
+    // Insert into community_members table
+    if (isUUID(commId) && user?.id) {
+      await supabase.from("community_members").upsert(
+        {
+          community_id: commId,
+          user_id: user.id,
+          role: "member",
+        },
+        { onConflict: "community_id,user_id" }
+      )
+    }
+
+    // Update members_count in communities table
+    const nextCount = currentMembersCount + 1
+    if (isUUID(commId)) {
+      await supabase
+        .from("communities")
+        .update({ members_count: nextCount })
+        .eq("id", commId)
+    } else {
+      await supabase
+        .from("communities")
+        .update({ members_count: nextCount })
+        .ilike("name", clean)
+    }
+
+    // Cache locally
+    const saved = localStorage.getItem("vertex_joined_community_names")
+    const list: string[] = saved ? JSON.parse(saved) : []
+    if (!list.includes(clean.toLowerCase())) {
+      list.push(clean.toLowerCase())
+      localStorage.setItem("vertex_joined_community_names", JSON.stringify(list))
+    }
+
+    return { success: true, members_count: nextCount }
+  } catch (err) {
+    console.warn("Supabase join community notice:", err)
+    return { success: true }
+  }
+}
+
+export async function leaveCommunityInDb(
+  communityIdOrName: string
+): Promise<{ success: boolean; members_count?: number }> {
+  const user = getCachedUser()
+  const clean = decodeURIComponent(communityIdOrName).trim()
+
+  try {
+    let commId = clean
+    let currentMembersCount = 1
+    if (!isUUID(clean)) {
+      const { data: comm } = await supabase
+        .from("communities")
+        .select("id, members_count")
+        .ilike("name", clean)
+        .maybeSingle()
+      if (comm?.id) {
+        commId = comm.id
+        currentMembersCount = comm.members_count || 1
+      }
+    }
+
+    // Delete from community_members table
+    if (isUUID(commId) && user?.id) {
+      await supabase
+        .from("community_members")
+        .delete()
+        .eq("community_id", commId)
+        .eq("user_id", user.id)
+    }
+
+    // Update members_count in communities table
+    const nextCount = Math.max(1, currentMembersCount - 1)
+    if (isUUID(commId)) {
+      await supabase
+        .from("communities")
+        .update({ members_count: nextCount })
+        .eq("id", commId)
+    } else {
+      await supabase
+        .from("communities")
+        .update({ members_count: nextCount })
+        .ilike("name", clean)
+    }
+
+    // Remove from local cache
+    const saved = localStorage.getItem("vertex_joined_community_names")
+    if (saved) {
+      const list: string[] = JSON.parse(saved)
+      const filtered = list.filter((k) => k !== clean.toLowerCase())
+      localStorage.setItem("vertex_joined_community_names", JSON.stringify(filtered))
+    }
+
+    return { success: true, members_count: nextCount }
+  } catch (err) {
+    console.warn("Supabase leave community notice:", err)
+    return { success: true }
+  }
+}
+
+export async function fetchUserJoinedCommunityNames(): Promise<string[]> {
+  const user = getCachedUser()
+  const names = new Set<string>()
+
+  try {
+    const saved = localStorage.getItem("vertex_joined_community_names")
+    if (saved) {
+      const list: string[] = JSON.parse(saved)
+      list.forEach((n) => names.add(n.toLowerCase()))
+    }
+  } catch { }
+
+  if (user?.id) {
+    try {
+      const { data: memberRows } = await supabase
+        .from("community_members")
+        .select("community_id, communities(name)")
+        .eq("user_id", user.id)
+
+      if (memberRows) {
+        for (const row of memberRows as any[]) {
+          if (row.communities?.name) {
+            names.add(row.communities.name.trim().toLowerCase())
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch user joined communities:", e)
+    }
+  }
+
+  return Array.from(names)
 }
 
 export async function fetchCommunityDetailFromDb(nameOrId: string) {
