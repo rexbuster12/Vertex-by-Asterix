@@ -5,7 +5,8 @@ import { addNotification } from "../lib/notificationStore"
 import { fetchAllProfiles } from "../lib/supabaseService"
 import { COURSE_OPTIONS } from "./ProfileCreatePage"
 import { COMMUNITY_CLUBS, MAJOR_CLUBS } from "../lib/clubsData"
-import { Ban, CheckSquare, Square } from "lucide-react"
+import { Ban, CheckSquare, Square, Flag } from "lucide-react"
+import ReportModal from "../components/ReportModal"
 
 export type StudentProfile = {
   id: string | number
@@ -69,6 +70,7 @@ function Students() {
     }
   })
   const [, setBlockedUsers] = useState<string[]>(() => getBlockedUsers())
+  const [reportTarget, setReportTarget] = useState<{ id: string; name: string } | null>(null)
   const [remoteProfiles, setRemoteProfiles] = useState<StudentProfile[]>([])
 
   const active = getActiveProfile()
@@ -557,6 +559,14 @@ function Students() {
                           >
                             <Ban className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setReportTarget({ id: String(student.id), name: student.name })}
+                            className="p-1.5 text-[#8892a0] hover:text-[#d84c23] hover:bg-[#fbe8e6] rounded-xs transition-colors cursor-pointer border border-transparent hover:border-[#d84c23]"
+                            title="Report student profile to campus moderators"
+                          >
+                            <Flag className="w-3.5 h-3.5" />
+                          </button>
                         </>
                       )}
                     </div>
@@ -581,6 +591,16 @@ function Students() {
             </Link>
           </div>
         </div>
+      )}
+      {/* Report Student Modal */}
+      {reportTarget && (
+        <ReportModal
+          isOpen={Boolean(reportTarget)}
+          onClose={() => setReportTarget(null)}
+          targetType="profile"
+          targetId={reportTarget.id}
+          targetName={reportTarget.name}
+        />
       )}
     </div>
   )

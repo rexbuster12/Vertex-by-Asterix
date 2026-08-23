@@ -19,10 +19,12 @@ import {
   ThumbsUp,
   ThumbsDown,
   UserMinus,
+  Flag,
 } from "lucide-react"
 import { WhatsAppIcon, InstagramIcon } from "../components/Icons"
 import EditCommunityModal from "../components/EditCommunityModal"
 import CreateAnnouncementModal from "../components/CreateAnnouncementModal"
+import ReportModal from "../components/ReportModal"
 import {
   findCommunityByName,
   deleteMockCommunity,
@@ -49,6 +51,7 @@ function CommunityDetail() {
   const [community, setCommunity] = useState<MockCommunity | null>(null)
   const [loading, setLoading] = useState(true)
   const [joined, setJoined] = useState(false)
+  const [isJoining, setIsJoining] = useState(false)
   const [memberCount, setMemberCount] = useState(0)
   const [isMemberListOpen, setIsMemberListOpen] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
@@ -56,6 +59,7 @@ function CommunityDetail() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false)
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false)
 
   // Kick Member Modal State
   const [memberToKick, setMemberToKick] = useState<CommunityMember | null>(null)
@@ -124,7 +128,7 @@ function CommunityDetail() {
   )
 
   const handleToggleJoin = async () => {
-    if (!community) return
+    if (!community || isJoining) return
 
     // If Founder clicks leave, open departure handover modal
     if (isFounder) {
@@ -132,22 +136,30 @@ function CommunityDetail() {
       return
     }
 
-    if (joined) {
-      setJoined(false)
-      setMemberCount((prev) => Math.max(1, prev - 1))
-      if (activeProfile?.display_name) {
-        removeCommunityMember(community.name, activeProfile.display_name)
+    setIsJoining(true)
+
+    try {
+      if (joined) {
+        setJoined(false)
+        setMemberCount((prev) => Math.max(1, prev - 1))
+        if (activeProfile?.display_name) {
+          removeCommunityMember(community.name, activeProfile.display_name)
+        }
+      } else {
+        setJoined(true)
+        setMemberCount((prev) => prev + 1)
+        addNotification({
+          type: "member_joined",
+          title: `Joined ${community.name}`,
+          message: `You joined ${community.name}. You'll receive updates and bulletins from this community.`,
+          linkUrl: `/communities/${encodeURIComponent(community.name)}`,
+          communityName: community.name,
+        })
       }
-    } else {
-      setJoined(true)
-      setMemberCount((prev) => prev + 1)
-      addNotification({
-        type: "member_joined",
-        title: `Joined ${community.name}`,
-        message: `You joined ${community.name}. You'll receive updates and bulletins from this community.`,
-        linkUrl: `/communities/${encodeURIComponent(community.name)}`,
-        communityName: community.name,
-      })
+    } finally {
+      setTimeout(() => {
+        setIsJoining(false)
+      }, 800)
     }
   }
 
@@ -433,6 +445,16 @@ function CommunityDetail() {
               </>
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setIsReportModalOpen(true)}
+            className="font-mono text-xs font-bold uppercase text-[#545e6d] bg-[#faf7f2] border-2 border-[#141c2b] px-3 py-1.5 rounded-xs shadow-[2px_2px_0px_#141c2b] hover:bg-[#fbe8e6] hover:text-[#d84c23] hover:border-[#d84c23] transition-colors flex items-center gap-1.5 cursor-pointer"
+            title="Report this community to campus moderators"
+          >
+            <Flag className="w-3.5 h-3.5 text-[#d84c23]" />
+            <span>Report</span>
+          </button>
         </div>
       </div>
 
@@ -535,12 +557,14 @@ function CommunityDetail() {
             ) : (
               <button
                 type="button"
+                disabled={isJoining}
                 onClick={handleToggleJoin}
-                className={`primary-action font-mono text-xs uppercase font-bold tracking-wider cursor-pointer ${joined ? "bg-[#eae2d5] text-[#141c2b] border-[#141c2b]" : ""
-                  }`}
+                className={`primary-action font-mono text-xs uppercase font-bold tracking-wider cursor-pointer ${
+                  joined ? "bg-[#eae2d5] text-[#141c2b] border-[#141c2b]" : ""
+                } ${isJoining ? "opacity-75 cursor-not-allowed" : ""}`}
                 style={{ padding: "0.75rem 1.5rem" }}
               >
-                {joined ? "Joined ✓" : "+ Join Community"}
+                {isJoining ? "Updating..." : joined ? "Joined ✓" : "+ Join Community"}
               </button>
             )}
 
@@ -1057,6 +1081,16 @@ function CommunityDetail() {
             </div>
           </div>
         </div>
+      )}
+      {/* Report Community Modal */}
+      {community && (
+        <ReportModal
+          isOpen={isReportModalOpen}
+          onClose={() => setIsReportModalOpen(false)}
+          targetType="community"
+          targetId={community.id || community.name}
+          targetName={community.name}
+        />
       )}
     </div>
   )

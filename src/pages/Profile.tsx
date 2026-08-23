@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react"
 import { Link, useSearchParams, useNavigate } from "react-router"
-import { LogOut, Users, ExternalLink, QrCode, Copy, Check, UserPlus, Share2 } from "lucide-react"
+import { LogOut, Users, ExternalLink, QrCode, Copy, Check, UserPlus, Share2, Flag } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import EditProfileModal, { type ProfileData } from "../components/EditProfileModal"
+import ReportModal from "../components/ReportModal"
 import { getActiveProfile, setActiveProfile, getActiveUser } from "../lib/tempStore"
 import { saveStudentProfile, signOutStudent, fetchCommunitiesFromDb } from "../lib/supabaseService"
 import { getStoredCommunities } from "../lib/mockStore"
@@ -19,6 +20,7 @@ function Profile() {
   const [joinedCommunities, setJoinedCommunities] = useState<any[]>([])
   const [copied, setCopied] = useState(false)
   const [isPeerConnected, setIsPeerConnected] = useState(false)
+  const [isReportOpen, setIsReportOpen] = useState(false)
 
   const active = getActiveProfile()
 
@@ -354,6 +356,15 @@ function Profile() {
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>{isPeerConnected ? "✓ Connected" : "Connect +"}</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIsReportOpen(true)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold uppercase text-[#545e6d] bg-[#faf7f2] hover:bg-[#fbe8e6] hover:text-[#d84c23] border border-[#141c2b] rounded-sm transition-all cursor-pointer"
+                  title="Report this student profile to campus moderators"
+                >
+                  <Flag className="w-3.5 h-3.5 text-[#d84c23]" />
+                  <span>Report Profile</span>
+                </button>
                 <Link
                   to="/students"
                   className="secondary-action text-xs font-mono text-center"
@@ -541,6 +552,16 @@ function Profile() {
           initialData={profile}
           onSave={handleSave}
           onClose={() => setIsEditOpen(false)}
+        />
+      )}
+      {/* ── REPORT PROFILE MODAL ─────────────────────────────────── */}
+      {profile && (
+        <ReportModal
+          isOpen={isReportOpen}
+          onClose={() => setIsReportOpen(false)}
+          targetType="profile"
+          targetId={profile.username || profile.display_name}
+          targetName={profile.display_name}
         />
       )}
     </>
